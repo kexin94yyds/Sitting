@@ -4,6 +4,7 @@
   <meta charset="utf-8" />
   <title>久坐提醒</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="manifest" href="/manifest.json">
   <style>
     body { 
       font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; 
@@ -145,9 +146,19 @@
     
     <div id="left">设置提醒间隔，点击开始计时</div>
     <div id="status"></div>
+    
+    <!-- PWA安装提示 -->
+    <div id="install-prompt" style="display: none; margin-top: 20px; padding: 15px; background: rgba(255, 255, 255, 0.1); border-radius: 10px; text-align: center; font-size: 14px;">
+      <p>📱 <strong>iPhone用户：</strong>点击Safari底部分享按钮 → "添加到主屏幕" → 从主屏幕图标打开应用，即可获得通知权限</p>
+      <button id="install-btn" style="margin-top: 10px; padding: 8px 16px; background: rgba(255, 255, 255, 0.2); border: none; border-radius: 6px; color: white; cursor: pointer;">我知道了</button>
+    </div>
   </div>
 
   <script>
+    // 注册根级 Service Worker，便于 iOS 安装为PWA
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js').catch(()=>{});
+    }
     const $ = sel => document.querySelector(sel);
     const btn = $('#start');
     const mins = $('#mins');
@@ -155,6 +166,8 @@
     const status = $('#status');
     const repeat = $('#repeat');
     const ask = $('#ask');
+    const installPrompt = $('#install-prompt');
+    const installBtn = $('#install-btn');
     
     let timer = null;
     let until = 0;
@@ -399,10 +412,27 @@
       }
     };
 
+    // 安装提示逻辑
+    installBtn.onclick = () => {
+      installPrompt.style.display = 'none';
+      localStorage.setItem('install_prompt_dismissed', 'true');
+    };
+
     // 页面失焦时保持计时器运行
     document.addEventListener('visibilitychange', () => {
       if (document.hidden && timer) {
         showNow('计时器在后台运行', '页面已最小化，但计时器仍在运行');
+      }
+    });
+
+    // 页面加载时检查是否需要显示安装提示
+    window.addEventListener('load', () => {
+      const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+      const isStandalone = window.matchMedia('(display-mode: standalone)').matches;
+      const promptDismissed = localStorage.getItem('install_prompt_dismissed');
+      
+      if (isIOS && !isStandalone && !promptDismissed) {
+        installPrompt.style.display = 'block';
       }
     });
   </script>

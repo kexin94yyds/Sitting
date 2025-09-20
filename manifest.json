@@ -1,0 +1,21 @@
+{
+  "name": "久坐提醒",
+  "short_name": "久坐提醒",
+  "description": "定时提醒你站起来活动，保护身体健康",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#667eea",
+  "theme_color": "#667eea",
+  "orientation": "portrait",
+  "scope": "/",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["health", "productivity", "utilities"],
+  "lang": "zh-CN"
+}
