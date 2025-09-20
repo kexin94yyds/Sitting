@@ -1,0 +1,158 @@
+// Service Worker for 久坐提醒 PWA
+const CACHE_NAME = 'sit-reminder-v1';
+const urlsToCache = [
+  '/',
+  '/index.html',
+  '/manifest.json'
+];
+
+// 安装事件
+self.addEventListener('install', event => {
+  event.waitUntil(
+    caches.open(CACHE_NAME)
+      .then(cache => {
+        return cache.addAll(urlsToCache);
+      })
+      .then(() => {
+        return self.skipWaiting();
+      })
+  );
+});
+
+// 激活事件
+self.addEventListener('activate', event => {
+  event.waitUntil(
+    caches.keys().then(cacheNames => {
+      return Promise.all(
+        cacheNames.map(cacheName => {
+          if (cacheName !== CACHE_NAME) {
+            return caches.delete(cacheName);
+          }
+        })
+      );
+    }).then(() => {
+      return self.clients.claim();
+    })
+  );
+});
+
+// 推送事件
+self.addEventListener('push', event => {
+  let data = {};
+  
+  try {
+    data = event.data ? event.data.json() : {};
+  } catch (e) {
+    console.error('解析推送数据失败:', e);
+  }
+
+  const title = data.title || '久坐提醒';
+  const body = data.body || '到了该休息的时间';
+  const icon = data.icon || '/icon-192.png';
+  const badge = data.badge || '/icon-192.png';
+
+  const options = {
+    body: body,
+    icon: icon,
+    badge: badge,
+    vibrate: [200, 100, 200, 100, 200],
+    requireInteraction: true,
+    actions: [
+      {
+        action: 'restart',
+        title: '重新开始',
+        icon: '/icon-192.png'
+      },
+      {
+        action: 'dismiss',
+        title: '知道了',
+        icon: '/icon-192.png'
+      }
+    ],
+    tag: 'sit-reminder',
+    renotify: true
+  };
+
+  event.waitUntil(
+    self.registration.showNotification(title, options)
+  );
+});
+
+// 通知点击事件
+self.addEventListener('notificationclick', event => {
+  event.notification.close();
+
+  if (event.action === 'restart') {
+    // 重新开始计时
+    event.waitUntil(
+      clients.matchAll({ type: 'window', includeUncontrolled: true })
+        .then(clientList => {
+          const url = new URL('/', self.location.origin).toString();
+          
+          for (const client of clientList) {
+            if (client.url === url) {
+              client.focus();
+              client.postMessage({ type: 'RESTART_TIMER' });
+              return;
+            }
+          }
+          
+          return clients.openWindow('/');
+        })
+    );
+  } else if (event.action === 'dismiss') {
+    // 用户点击了"知道了"
+    console.log('用户确认了提醒');
+  } else {
+    // 点击通知本身
+    event.waitUntil(
+      clients.matchAll({ type: 'window', includeUncontrolled: true })
+        .then(clientList => {
+          const url = new URL('/', self.location.origin).toString();
+          
+          for (const client of clientList) {
+            if (client.url === url) {
+              client.focus();
+              client.postMessage({ type: 'REMINDER' });
+              return;
+            }
+          }
+          
+          return clients.openWindow('/');
+        })
+    );
+  }
+});
+
+// 后台同步（如果支持）
+self.addEventListener('sync', event => {
+  if (event.tag === 'background-sync') {
+    event.waitUntil(
+      // 这里可以添加后台同步逻辑
+      console.log('后台同步触发')
+    );
+  }
+});
+
+// 消息事件
+self.addEventListener('message', event => {
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
+});
+
+// 网络请求拦截
+self.addEventListener('fetch', event => {
+  event.respondWith(
+    caches.match(event.request)
+      .then(response => {
+        // 如果缓存中有，返回缓存版本
+        if (response) {
+          return response;
+        }
+        
+        // 否则从网络获取
+        return fetch(event.request);
+      })
+  );
+});

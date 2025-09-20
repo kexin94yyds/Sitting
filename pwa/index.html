@@ -1,0 +1,360 @@
+<!doctype html>
+<html lang="zh">
+<head>
+  <meta charset="utf-8" />
+  <title>久坐提醒 PWA</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="manifest" href="/manifest.json">
+  <style>
+    body { 
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; 
+      max-width: 520px; 
+      margin: 40px auto; 
+      padding: 0 16px; 
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      color: white;
+    }
+    
+    .container {
+      background: rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(10px);
+      border-radius: 20px;
+      padding: 30px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+    }
+    
+    h1 {
+      text-align: center;
+      margin-bottom: 30px;
+      font-size: 2.5em;
+      font-weight: 300;
+    }
+    
+    .form-group {
+      margin-bottom: 20px;
+    }
+    
+    label {
+      display: block;
+      margin-bottom: 8px;
+      font-size: 16px;
+      font-weight: 500;
+    }
+    
+    input[type="number"] {
+      width: 100%;
+      padding: 12px 16px;
+      border: none;
+      border-radius: 10px;
+      font-size: 16px;
+      background: rgba(255, 255, 255, 0.2);
+      color: white;
+      backdrop-filter: blur(5px);
+    }
+    
+    input[type="number"]::placeholder {
+      color: rgba(255, 255, 255, 0.7);
+    }
+    
+    input[type="number"]:focus {
+      outline: none;
+      background: rgba(255, 255, 255, 0.3);
+    }
+    
+    button {
+      width: 100%;
+      padding: 15px;
+      border: none;
+      border-radius: 10px;
+      font-size: 18px;
+      font-weight: 600;
+      background: linear-gradient(45deg, #ff6b6b, #ee5a24);
+      color: white;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      margin-bottom: 20px;
+    }
+    
+    button:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+    }
+    
+    button:active {
+      transform: translateY(0);
+    }
+    
+    button:disabled {
+      background: rgba(255, 255, 255, 0.2);
+      cursor: not-allowed;
+      transform: none;
+    }
+    
+    #left {
+      margin-top: 20px;
+      padding: 20px;
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 10px;
+      text-align: center;
+      font-size: 18px;
+      font-weight: 500;
+      min-height: 60px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    
+    .status {
+      margin-top: 15px;
+      padding: 10px;
+      border-radius: 8px;
+      text-align: center;
+      font-size: 14px;
+    }
+    
+    .status.success {
+      background: rgba(46, 204, 113, 0.2);
+      color: #2ecc71;
+    }
+    
+    .status.error {
+      background: rgba(231, 76, 60, 0.2);
+      color: #e74c3c;
+    }
+    
+    .status.info {
+      background: rgba(52, 152, 219, 0.2);
+      color: #3498db;
+    }
+
+    .pwa-badge {
+      background: rgba(255, 255, 255, 0.1);
+      padding: 10px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+      text-align: center;
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>⏰ 久坐提醒 PWA</h1>
+    
+    <div class="pwa-badge">
+      📱 支持后台推送通知<br>
+      iPhone 需添加到主屏幕使用
+    </div>
+    
+    <div class="form-group">
+      <label for="mins">提醒间隔（分钟）：</label>
+      <input id="mins" type="number" min="1" max="180" value="45" placeholder="输入分钟数">
+    </div>
+    
+    <button id="start">开始并订阅通知</button>
+    
+    <div id="left">设置提醒间隔，点击开始计时</div>
+    <div id="status"></div>
+  </div>
+
+  <script type="module">
+    import { createClient } from 'https://cdn.skypack.dev/@supabase/supabase-js@2';
+
+    // Supabase 配置 - 请替换为你的项目配置
+    const SUPABASE_URL = 'YOUR_SUPABASE_URL';
+    const SUPABASE_ANON_KEY = 'YOUR_SUPABASE_ANON_KEY';
+    
+    const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    const $ = sel => document.querySelector(sel);
+    const btn = $('#start');
+    const mins = $('#mins');
+    const left = $('#left');
+    const status = $('#status');
+
+    function showStatus(message, type = 'info') {
+      status.textContent = message;
+      status.className = `status ${type}`;
+      setTimeout(() => {
+        status.textContent = '';
+        status.className = 'status';
+      }, 5000);
+    }
+
+    async function registerSW() {
+      if (!('serviceWorker' in navigator)) {
+        throw new Error('Service Worker 不支持');
+      }
+      
+      const reg = await navigator.serviceWorker.register('/sw.js');
+      await navigator.serviceWorker.ready;
+      return reg;
+    }
+
+    async function ensurePermission() {
+      if (!("Notification" in window)) {
+        throw new Error('此浏览器不支持通知');
+      }
+      
+      const p = Notification.permission === 'default' 
+        ? await Notification.requestPermission() 
+        : Notification.permission;
+        
+      if (p !== 'granted') {
+        throw new Error('未授予通知权限');
+      }
+      
+      return true;
+    }
+
+    function urlBase64ToUint8Array(base64String) {
+      const padding = '='.repeat((4 - base64String.length % 4) % 4);
+      const base64 = (base64String + padding)
+        .replace(/-/g, '+')
+        .replace(/_/g, '/');
+      const raw = atob(base64);
+      const output = new Uint8Array(raw.length);
+      for (let i = 0; i < raw.length; ++i) {
+        output[i] = raw.charCodeAt(i);
+      }
+      return output;
+    }
+
+    async function subscribeToPush(reg) {
+      // 使用 Supabase 的推送订阅
+      const subscription = await reg.pushManager.getSubscription() ||
+        await reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array('YOUR_VAPID_PUBLIC_KEY')
+        });
+
+      // 保存订阅到 Supabase
+      const { error } = await supabase
+        .from('push_subscriptions')
+        .upsert({
+          subscription: subscription,
+          user_agent: navigator.userAgent,
+          created_at: new Date().toISOString()
+        });
+
+      if (error) {
+        console.error('保存订阅失败:', error);
+        throw new Error('保存推送订阅失败');
+      }
+
+      return subscription;
+    }
+
+    async function scheduleReminder(minutes) {
+      const reminderTime = new Date(Date.now() + minutes * 60 * 1000);
+      
+      // 保存提醒到 Supabase
+      const { error } = await supabase
+        .from('reminders')
+        .insert({
+          minutes: minutes,
+          reminder_time: reminderTime.toISOString(),
+          title: '该休息啦',
+          body: '起来活动一下，喝口水 👟',
+          status: 'scheduled'
+        });
+
+      if (error) {
+        console.error('保存提醒失败:', error);
+        throw new Error('保存提醒失败');
+      }
+
+      return reminderTime;
+    }
+
+    async function startReminder() {
+      try {
+        status.textContent = '初始化中…';
+        
+        // 注册 Service Worker
+        const reg = await registerSW();
+        
+        // 确保通知权限
+        await ensurePermission();
+        
+        // 订阅推送
+        await subscribeToPush(reg);
+        
+        // 获取提醒间隔
+        const m = Math.max(1, Number(mins.value || 0));
+        if (m > 180) {
+          throw new Error('提醒间隔不能超过180分钟');
+        }
+        
+        // 安排提醒
+        const reminderTime = await scheduleReminder(m);
+        
+        // 更新 UI
+        left.innerHTML = `⏰ 已设置 ${m} 分钟后提醒<br>${reminderTime.toLocaleString()}`;
+        left.style.background = 'rgba(52, 152, 219, 0.3)';
+        
+        btn.textContent = '重新设置';
+        
+        showStatus(`已设置 ${m} 分钟后提醒（支持后台推送）`, 'success');
+        
+        // 开始本地倒计时显示
+        startLocalCountdown(m);
+        
+      } catch (e) {
+        console.error('启动失败:', e);
+        showStatus('失败：' + e.message, 'error');
+      }
+    }
+
+    function startLocalCountdown(minutes) {
+      const endTime = Date.now() + minutes * 60 * 1000;
+      
+      const updateDisplay = () => {
+        const remaining = endTime - Date.now();
+        if (remaining <= 0) {
+          left.innerHTML = '🎉 到点啦！<br>起来活动一下～';
+          left.style.background = 'rgba(46, 204, 113, 0.3)';
+          return;
+        }
+        
+        const mins = Math.floor(remaining / 60000);
+        const secs = Math.floor((remaining % 60000) / 1000);
+        left.innerHTML = `剩余时间：${mins}:${secs.toString().padStart(2, '0')}`;
+      };
+      
+      updateDisplay();
+      const interval = setInterval(updateDisplay, 1000);
+      
+      // 5分钟后清除本地倒计时，依赖服务器推送
+      setTimeout(() => {
+        clearInterval(interval);
+        left.innerHTML = '⏰ 后台运行中<br>将按时推送通知';
+      }, 5 * 60 * 1000);
+    }
+
+    // 监听来自 Service Worker 的提醒
+    navigator.serviceWorker.addEventListener('message', event => {
+      if (event.data.type === 'REMINDER') {
+        left.innerHTML = '🎉 到点啦！<br>起来活动一下～';
+        left.style.background = 'rgba(46, 204, 113, 0.3)';
+        showStatus('提醒已推送！', 'success');
+      }
+    });
+
+    btn.onclick = startReminder;
+
+    // 页面加载时检查配置
+    window.addEventListener('load', () => {
+      if (SUPABASE_URL === 'YOUR_SUPABASE_URL') {
+        showStatus('请先配置 Supabase 连接信息', 'error');
+        btn.disabled = true;
+      } else if (Notification.permission === 'granted') {
+        showStatus('通知权限已授予，可以开始使用', 'success');
+      } else if (Notification.permission === 'denied') {
+        showStatus('通知权限被拒绝，请手动允许', 'error');
+      }
+    });
+  </script>
+</body>
+</html>

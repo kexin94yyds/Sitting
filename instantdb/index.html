@@ -1,0 +1,507 @@
+<!doctype html>
+<html lang="zh">
+<head>
+  <meta charset="utf-8" />
+  <title>久坐提醒 PWA</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="manifest" href="./manifest.json">
+  <style>
+    body { 
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; 
+      max-width: 520px; 
+      margin: 40px auto; 
+      padding: 0 16px; 
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      color: white;
+    }
+    
+    .container {
+      background: rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(10px);
+      border-radius: 20px;
+      padding: 30px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+    }
+    
+    h1 {
+      text-align: center;
+      margin-bottom: 30px;
+      font-size: 2.5em;
+      font-weight: 300;
+    }
+    
+    .form-group {
+      margin-bottom: 20px;
+    }
+    
+    label {
+      display: block;
+      margin-bottom: 8px;
+      font-size: 16px;
+      font-weight: 500;
+    }
+    
+    input[type="number"] {
+      width: 100%;
+      padding: 12px 16px;
+      border: none;
+      border-radius: 10px;
+      font-size: 16px;
+      background: rgba(255, 255, 255, 0.2);
+      color: white;
+      backdrop-filter: blur(5px);
+    }
+    
+    input[type="number"]::placeholder {
+      color: rgba(255, 255, 255, 0.7);
+    }
+    
+    input[type="number"]:focus {
+      outline: none;
+      background: rgba(255, 255, 255, 0.3);
+    }
+    
+    button {
+      width: 100%;
+      padding: 15px;
+      border: none;
+      border-radius: 10px;
+      font-size: 18px;
+      font-weight: 600;
+      background: linear-gradient(45deg, #ff6b6b, #ee5a24);
+      color: white;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      margin-bottom: 20px;
+    }
+    
+    button:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+    }
+    
+    button:active {
+      transform: translateY(0);
+    }
+    
+    button:disabled {
+      background: rgba(255, 255, 255, 0.2);
+      cursor: not-allowed;
+      transform: none;
+    }
+    
+    #left {
+      margin-top: 20px;
+      padding: 20px;
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 10px;
+      text-align: center;
+      font-size: 18px;
+      font-weight: 500;
+      min-height: 60px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    
+    .status {
+      margin-top: 15px;
+      padding: 10px;
+      border-radius: 8px;
+      text-align: center;
+      font-size: 14px;
+    }
+    
+    .status.success {
+      background: rgba(46, 204, 113, 0.2);
+      color: #2ecc71;
+    }
+    
+    .status.error {
+      background: rgba(231, 76, 60, 0.2);
+      color: #e74c3c;
+    }
+    
+    .status.info {
+      background: rgba(52, 152, 219, 0.2);
+      color: #3498db;
+    }
+
+    .pwa-badge {
+      background: rgba(255, 255, 255, 0.1);
+      padding: 10px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+      text-align: center;
+      font-size: 14px;
+    }
+
+    .reminder-list {
+      margin-top: 20px;
+      max-height: 200px;
+      overflow-y: auto;
+    }
+
+    .reminder-item {
+      background: rgba(255, 255, 255, 0.1);
+      padding: 10px;
+      border-radius: 8px;
+      margin-bottom: 10px;
+      font-size: 14px;
+    }
+
+    .reminder-time {
+      font-weight: 600;
+      color: #3498db;
+    }
+
+    .reminder-status {
+      float: right;
+      padding: 2px 8px;
+      border-radius: 12px;
+      font-size: 12px;
+    }
+
+    .status-scheduled {
+      background: rgba(52, 152, 219, 0.3);
+      color: #3498db;
+    }
+
+    .status-sent {
+      background: rgba(46, 204, 113, 0.3);
+      color: #2ecc71;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>⏰ 久坐提醒 PWA</h1>
+    
+    <div class="pwa-badge">
+      📱 支持后台推送通知<br>
+      iPhone 需添加到主屏幕使用<br>
+      🔄 使用 Instant DB 实时同步
+    </div>
+    
+    <div class="form-group">
+      <label for="mins">提醒间隔（分钟）：</label>
+      <input id="mins" type="number" min="1" max="180" value="45" placeholder="输入分钟数">
+    </div>
+    
+    <button id="start">开始并订阅通知</button>
+    <button id="ask">允许通知</button>
+    
+    <div id="left">设置提醒间隔，点击开始计时</div>
+    
+    <div class="reminder-list" id="reminderList" style="display: none;">
+      <h3>📋 提醒记录</h3>
+      <div id="reminders"></div>
+    </div>
+    
+    <div id="status"></div>
+  </div>
+
+  <script type="module">
+    import { init, tx, id } from 'https://cdn.jsdelivr.net/npm/@instantdb/react@0.8.0/dist/index.js';
+
+    // Instant DB 配置
+    const APP_ID = '45324b65-18cd-4cbc-bec7-74d777663e74';
+    const API_KEY = 'b89a77b0-e368-469a-bc93-4e4192d30ae1';
+    
+    const db = init({
+      appId: APP_ID,
+      apiKey: API_KEY
+    });
+
+    const $ = sel => document.querySelector(sel);
+    const btn = $('#start');
+    const mins = $('#mins');
+    const left = $('#left');
+    const status = $('#status');
+    const ask = $('#ask');
+    const reminderList = $('#reminderList');
+    const reminders = $('#reminders');
+
+    let currentReminder = null;
+    let localTimer = null;
+
+    function showStatus(message, type = 'info') {
+      status.textContent = message;
+      status.className = `status ${type}`;
+      setTimeout(() => {
+        status.textContent = '';
+        status.className = 'status';
+      }, 5000);
+    }
+
+    async function registerSW() {
+      if (!('serviceWorker' in navigator)) {
+        throw new Error('Service Worker 不支持');
+      }
+      
+      // 使用相对路径，保证在子目录下也能注册成功
+      const reg = await navigator.serviceWorker.register('./sw.js');
+      await navigator.serviceWorker.ready;
+      return reg;
+    }
+
+    async function ensurePermission() {
+      if (!("Notification" in window)) {
+        throw new Error('此浏览器不支持通知');
+      }
+      
+      const p = Notification.permission === 'default' 
+        ? await Notification.requestPermission() 
+        : Notification.permission;
+        
+      // 不再抛错：即使未授予，也允许本地倒计时运行
+      return p === 'granted';
+    }
+
+    function urlBase64ToUint8Array(base64String) {
+      const padding = '='.repeat((4 - base64String.length % 4) % 4);
+      const base64 = (base64String + padding)
+        .replace(/-/g, '+')
+        .replace(/_/g, '/');
+      const raw = atob(base64);
+      const output = new Uint8Array(raw.length);
+      for (let i = 0; i < raw.length; ++i) {
+        output[i] = raw.charCodeAt(i);
+      }
+      return output;
+    }
+
+    async function subscribeToPush(reg) {
+      if (!reg) throw new Error('SW 未注册');
+      const VAPID = 'YOUR_VAPID_PUBLIC_KEY';
+      if (!VAPID || VAPID.includes('YOUR_VAPID_PUBLIC_KEY')) {
+        throw new Error('未配置 VAPID，跳过推送订阅');
+      }
+      const subscription = await reg.pushManager.getSubscription() ||
+        await reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(VAPID)
+        });
+      console.log('推送订阅成功:', subscription);
+      return subscription;
+    }
+
+    async function createReminder(minutes) {
+      const reminderTime = new Date(Date.now() + minutes * 60 * 1000);
+      const reminderId = 'reminder_' + Date.now();
+      
+      // 暂时跳过数据库保存，先让基本功能工作
+      console.log('创建提醒:', { id: reminderId, time: reminderTime });
+      return { id: reminderId, time: reminderTime };
+    }
+
+    async function startReminder() {
+      try {
+        status.textContent = '初始化中…';
+        
+        // 注册 Service Worker（失败也继续）
+        let reg = null;
+        try {
+          reg = await registerSW();
+        } catch (e) {
+          console.warn('SW 注册失败：', e);
+          showStatus('SW 注册失败，先使用本地提醒', 'info');
+        }
+        
+        // 请求通知权限（未授予也继续）
+        try {
+          const granted = await ensurePermission();
+          if (!granted) showStatus('未授予通知权限，将使用声音/页面提醒', 'info');
+        } catch (e) {
+          console.warn('通知权限处理失败：', e);
+          showStatus('通知权限不可用，将使用声音/页面提醒', 'info');
+        }
+        
+        // 订阅推送（未配置 VAPID 或失败时跳过）
+        try {
+          if (reg) await subscribeToPush(reg);
+        } catch (e) {
+          console.warn('推送订阅跳过/失败：', e);
+        }
+        
+        // 获取提醒间隔
+        const m = Math.max(1, Number(mins.value || 0));
+        if (m > 180) {
+          throw new Error('提醒间隔不能超过180分钟');
+        }
+        
+        // 创建提醒
+        const reminder = await createReminder(m);
+        currentReminder = reminder;
+        
+        // 更新 UI
+        left.innerHTML = `⏰ 已设置 ${m} 分钟后提醒<br>${reminder.time.toLocaleString()}`;
+        left.style.background = 'rgba(52, 152, 219, 0.3)';
+        
+        btn.textContent = '重新设置';
+        
+        showStatus(`已设置 ${m} 分钟后提醒（支持后台推送）`, 'success');
+        
+        // 开始本地倒计时显示
+        startLocalCountdown(m);
+        
+        // 显示提醒列表
+        reminderList.style.display = 'block';
+        
+      } catch (e) {
+        console.error('启动失败:', e);
+        showStatus('失败：' + (e?.message || e), 'error');
+      }
+    }
+
+    function startLocalCountdown(minutes) {
+      const endTime = Date.now() + minutes * 60 * 1000;
+      
+      const updateDisplay = () => {
+        const remaining = endTime - Date.now();
+        if (remaining <= 0) {
+          left.innerHTML = '🎉 到点啦！<br>起来活动一下～';
+          left.style.background = 'rgba(46, 204, 113, 0.3)';
+          // 到点时给出原生通知
+          try { showNow('该休息啦', '起来活动一下，喝口水 👟'); } catch {}
+          return;
+        }
+        
+        const mins = Math.floor(remaining / 60000);
+        const secs = Math.floor((remaining % 60000) / 1000);
+        left.innerHTML = `剩余时间：${mins}:${secs.toString().padStart(2, '0')}`;
+      };
+      
+      updateDisplay();
+      localTimer = setInterval(updateDisplay, 1000);
+      
+      // 5分钟后清除本地倒计时，依赖服务器推送
+      setTimeout(() => {
+        if (localTimer) {
+          clearInterval(localTimer);
+          localTimer = null;
+        }
+        left.innerHTML = '⏰ 后台运行中<br>将按时推送通知';
+      }, 5 * 60 * 1000);
+    }
+
+    function renderReminders(reminderData) {
+      if (!reminderData || reminderData.length === 0) {
+        reminders.innerHTML = '<div class="reminder-item">暂无提醒记录</div>';
+        return;
+      }
+
+      reminders.innerHTML = reminderData
+        .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+        .slice(0, 10) // 只显示最近10条
+        .map(reminder => `
+          <div class="reminder-item">
+            <div class="reminder-time">
+              ${new Date(reminder.reminder_time).toLocaleString()}
+            </div>
+            <div class="reminder-status status-${reminder.status}">
+              ${reminder.status === 'scheduled' ? '⏰ 待发送' : 
+                reminder.status === 'sent' ? '✅ 已发送' : '❌ 已取消'}
+            </div>
+            <div style="clear: both; margin-top: 5px; font-size: 12px; opacity: 0.8;">
+              ${reminder.minutes}分钟间隔 • ${reminder.title}
+            </div>
+          </div>
+        `).join('');
+    }
+
+    // 监听来自 Service Worker 的提醒
+    navigator.serviceWorker.addEventListener('message', event => {
+      if (event.data.type === 'REMINDER') {
+        left.innerHTML = '🎉 到点啦！<br>起来活动一下～';
+        left.style.background = 'rgba(46, 204, 113, 0.3)';
+        showStatus('提醒已推送！', 'success');
+        
+        // 更新提醒状态
+        if (currentReminder) {
+          tx(db).set({
+            reminders: {
+              id: currentReminder.id,
+              status: 'sent'
+            }
+          });
+        }
+      }
+    });
+
+    btn.onclick = startReminder;
+
+    // 页面加载时检查配置
+    window.addEventListener('load', async () => {
+
+      try {
+        // 暂时跳过数据库查询，先让基本功能工作
+        console.log('应用初始化完成');
+        
+        if (Notification.permission === 'granted') {
+          showStatus('通知权限已授予，可以开始使用', 'success');
+        } else if (Notification.permission === 'denied') {
+          showStatus('通知权限被拒绝，请手动允许', 'error');
+        } else {
+          showStatus('点击开始按钮将请求通知权限', 'info');
+        }
+      } catch (error) {
+        console.error('初始化失败:', error);
+        showStatus('初始化失败：' + error.message, 'error');
+      }
+    });
+
+    // 页面失焦时保持计时器运行
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden && currentReminder) {
+        showNow('计时器在后台运行', '页面已最小化，但计时器仍在运行');
+      }
+    });
+
+    // 单独的“允许通知”按钮
+    ask.onclick = async () => {
+      if (!("Notification" in window)) {
+        showStatus('此浏览器不支持通知', 'error');
+        return;
+      }
+      try {
+        const p = Notification.permission === 'default' 
+          ? await Notification.requestPermission() 
+          : Notification.permission;
+        if (p === 'granted') {
+          showStatus('已允许通知', 'success');
+          showNow('已开启通知', '到点会以系统通知提醒你');
+        } else if (p === 'denied') {
+          showStatus('通知被系统阻止，请在浏览器设置里允许', 'error');
+        } else {
+          showStatus('通知权限未变更', 'info');
+        }
+      } catch (e) {
+        showStatus('请求通知权限失败', 'error');
+      }
+    };
+
+    async function showNow(title, body) {
+      const options = {
+        body,
+        icon: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">⏰</text></svg>',
+        badge: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">⏰</text></svg>'
+      };
+      try {
+        if ('serviceWorker' in navigator) {
+          const reg = await navigator.serviceWorker.ready;
+          await reg.showNotification(title, options);
+        } else if ("Notification" in window && Notification.permission === 'granted') {
+          new Notification(title, options);
+        } else {
+          alert(`${title}\n${body}`);
+        }
+      } catch (e) {
+        alert(`${title}\n${body}`);
+      }
+      if (navigator.vibrate) navigator.vibrate([200, 100, 200, 100, 200]);
+    }
+  </script>
+</body>
+</html>

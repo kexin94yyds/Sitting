@@ -1,0 +1,39 @@
+{
+  "name": "sit-reminder-instantdb",
+  "version": "1.0.0",
+  "description": "智能久坐提醒应用，使用 Instant DB 实时同步",
+  "main": "index.html",
+  "scripts": {
+    "dev": "npx serve . -p 3000",
+    "build": "echo 'No build step required for static files'",
+    "deploy": "echo 'Deploy to your preferred static hosting service'",
+    "setup-instantdb": "echo 'Follow instantdb-setup.md guide'",
+    "generate-vapid": "npx web-push generate-vapid-keys"
+  },
+  "keywords": [
+    "pwa",
+    "reminder",
+    "notification",
+    "health",
+    "productivity",
+    "instantdb",
+    "realtime"
+  ],
+  "author": "Your Name",
+  "license": "MIT",
+  "devDependencies": {
+    "serve": "^14.2.1",
+    "web-push": "^3.6.6"
+  },
+  "dependencies": {
+    "@instantdb/react": "^0.8.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yourusername/sit-reminder-instantdb.git"
+  },
+  "bugs": {
+    "url": "https://github.com/yourusername/sit-reminder-instantdb/issues"
+  },
+  "homepage": "https://github.com/yourusername/sit-reminder-instantdb#readme"
+}

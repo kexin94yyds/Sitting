@@ -1,0 +1,410 @@
+<!doctype html>
+<html lang="zh">
+<head>
+  <meta charset="utf-8" />
+  <title>久坐提醒</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    body { 
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; 
+      max-width: 520px; 
+      margin: 40px auto; 
+      padding: 0 16px; 
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      color: white;
+    }
+    
+    .container {
+      background: rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(10px);
+      border-radius: 20px;
+      padding: 30px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+    }
+    
+    h1 {
+      text-align: center;
+      margin-bottom: 30px;
+      font-size: 2.5em;
+      font-weight: 300;
+    }
+    
+    .form-group {
+      margin-bottom: 20px;
+    }
+    
+    label {
+      display: block;
+      margin-bottom: 8px;
+      font-size: 16px;
+      font-weight: 500;
+    }
+    
+    input[type="number"] {
+      width: 100%;
+      padding: 12px 16px;
+      border: none;
+      border-radius: 10px;
+      font-size: 16px;
+      background: rgba(255, 255, 255, 0.2);
+      color: white;
+      backdrop-filter: blur(5px);
+    }
+    
+    input[type="number"]::placeholder {
+      color: rgba(255, 255, 255, 0.7);
+    }
+    
+    input[type="number"]:focus {
+      outline: none;
+      background: rgba(255, 255, 255, 0.3);
+    }
+    
+    button {
+      width: 100%;
+      padding: 15px;
+      border: none;
+      border-radius: 10px;
+      font-size: 18px;
+      font-weight: 600;
+      background: linear-gradient(45deg, #ff6b6b, #ee5a24);
+      color: white;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      margin-bottom: 20px;
+    }
+    
+    button:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+    }
+    
+    button:active {
+      transform: translateY(0);
+    }
+    
+    button:disabled {
+      background: rgba(255, 255, 255, 0.2);
+      cursor: not-allowed;
+      transform: none;
+    }
+    
+    #left {
+      margin-top: 20px;
+      padding: 20px;
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 10px;
+      text-align: center;
+      font-size: 18px;
+      font-weight: 500;
+      min-height: 60px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    
+    .status {
+      margin-top: 15px;
+      padding: 10px;
+      border-radius: 8px;
+      text-align: center;
+      font-size: 14px;
+    }
+    
+    .status.success {
+      background: rgba(46, 204, 113, 0.2);
+      color: #2ecc71;
+    }
+    
+    .status.error {
+      background: rgba(231, 76, 60, 0.2);
+      color: #e74c3c;
+    }
+    
+    .status.info {
+      background: rgba(52, 152, 219, 0.2);
+      color: #3498db;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>⏰ 久坐提醒</h1>
+    
+    <div class="form-group">
+      <label for="mins">提醒间隔（分钟）：</label>
+      <input id="mins" type="number" min="1" max="180" value="45" placeholder="输入分钟数">
+    </div>
+    <div class="form-group">
+      <label><input id="repeat" type="checkbox" checked> 循环提醒（到点后自动继续）</label>
+    </div>
+    
+    <button id="start">开始计时</button>
+    <button id="ask">允许通知</button>
+    
+    <div id="left">设置提醒间隔，点击开始计时</div>
+    <div id="status"></div>
+  </div>
+
+  <script>
+    const $ = sel => document.querySelector(sel);
+    const btn = $('#start');
+    const mins = $('#mins');
+    const left = $('#left');
+    const status = $('#status');
+    const repeat = $('#repeat');
+    const ask = $('#ask');
+    
+    let timer = null;
+    let until = 0;
+    let ticker = null;
+    let intervalMinutes = 0;
+    let audioCtx = null;
+
+    const STORAGE_KEY = 'sit_reminder_state_v1';
+
+    function showStatus(message, type = 'info') {
+      status.textContent = message;
+      status.className = `status ${type}`;
+      setTimeout(() => {
+        status.textContent = '';
+        status.className = 'status';
+      }, 3000);
+    }
+
+    async function ensurePermission() {
+      if (!("Notification" in window)) {
+        showStatus("此浏览器不支持通知", 'error');
+        return false;
+      }
+      
+      const p = Notification.permission === 'default' 
+        ? await Notification.requestPermission() 
+        : Notification.permission;
+        
+      if (p !== 'granted') {
+        showStatus('请允许通知权限才能收到提醒', 'error');
+        return false;
+      }
+      
+      return true;
+    }
+
+    function showNow(title, body) {
+      try {
+        new Notification(title, {
+          body,
+          icon: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">⏰</text></svg>',
+          badge: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">⏰</text></svg>'
+        });
+      } catch (e) {
+        alert(`${title}\n${body}`);
+      }
+      
+      // 震动提醒（如果支持）
+      if (navigator.vibrate) {
+        navigator.vibrate([200, 100, 200, 100, 200]);
+      }
+
+      // 蜂鸣音（若已预热音频上下文）
+      try { playBeep(); } catch {}
+    }
+
+    function fmt(ms) {
+      const s = Math.max(0, Math.round(ms / 1000));
+      const m = Math.floor(s / 60);
+      const ss = String(s % 60).padStart(2, '0');
+      return `${m}:${ss}`;
+    }
+
+    function tick() {
+      const ms = until - Date.now();
+      if (ms <= 0) {
+        left.innerHTML = '🎉 到点啦！<br>起来活动一下～';
+        left.style.background = 'rgba(46, 204, 113, 0.3)';
+        showNow('该休息啦', '站起来走动下，喝口水 👟');
+        showStatus('提醒已发送！', 'success');
+
+        // 循环或结束
+        if (repeat.checked && intervalMinutes > 0) {
+          until = Date.now() + intervalMinutes * 60 * 1000;
+          persistState(true);
+          // 确保 ticker 存在
+          if (!ticker) ticker = setInterval(tick, 500);
+          if (timer) clearTimeout(timer);
+          timer = setTimeout(() => tick(), intervalMinutes * 60 * 1000 + 120);
+          // 恢复进行中的样式
+          left.style.background = 'rgba(52, 152, 219, 0.3)';
+        } else {
+          clearInterval(ticker);
+          ticker = null;
+          timer = null;
+          btn.textContent = '重新开始';
+          btn.disabled = false;
+          persistState(false);
+        }
+      } else {
+        left.textContent = '剩余时间：' + fmt(ms);
+      }
+    }
+
+    function stopTimer() {
+      if (ticker) {
+        clearInterval(ticker);
+        ticker = null;
+      }
+      if (timer) {
+        clearTimeout(timer);
+        timer = null;
+      }
+      persistState(false);
+    }
+
+    function persistState(running) {
+      try {
+        if (!running) {
+          localStorage.removeItem(STORAGE_KEY);
+          return;
+        }
+        const payload = {
+          until,
+          intervalMinutes,
+          repeat: !!repeat.checked,
+          running: true
+        };
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+      } catch {}
+    }
+
+    function restoreState() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (!raw) return false;
+        const s = JSON.parse(raw);
+        if (!s || !s.running) return false;
+        intervalMinutes = Number(s.intervalMinutes||0);
+        if (typeof s.repeat === 'boolean') repeat.checked = s.repeat;
+        until = Number(s.until||0);
+        const remain = until - Date.now();
+        if (remain <= 0) { localStorage.removeItem(STORAGE_KEY); return false; }
+
+        left.textContent = '剩余时间：' + fmt(remain);
+        left.style.background = 'rgba(52, 152, 219, 0.3)';
+        btn.textContent = '停止计时';
+        btn.disabled = false;
+        ticker = setInterval(tick, 500);
+        timer = setTimeout(() => tick(), remain + 120);
+        return true;
+      } catch { return false; }
+    }
+
+    function ensureAudio() {
+      try {
+        if (!audioCtx) {
+          const Ctx = window.AudioContext || window.webkitAudioContext;
+          if (Ctx) {
+            audioCtx = new Ctx();
+          }
+        }
+      } catch {}
+    }
+
+    function playBeep() {
+      if (!audioCtx) return;
+      const duration = 0.35; // 秒
+      const oscillator = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      oscillator.type = 'sine';
+      oscillator.frequency.value = 880; // Hz
+      gain.gain.setValueAtTime(0.001, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.2, audioCtx.currentTime + 0.05);
+      gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + duration);
+      oscillator.connect(gain).connect(audioCtx.destination);
+      oscillator.start();
+      oscillator.stop(audioCtx.currentTime + duration + 0.02);
+    }
+
+    btn.onclick = async () => {
+      if (timer) {
+        // 停止当前计时
+        stopTimer();
+        left.textContent = '计时已停止';
+        left.style.background = 'rgba(255, 255, 255, 0.1)';
+        btn.textContent = '开始计时';
+        showStatus('计时已停止', 'info');
+        return;
+      }
+
+      if (!(await ensurePermission())) return;
+
+      ensureAudio();
+      const m = Math.max(1, Number(mins.value || 0));
+      if (m > 180) {
+        showStatus('提醒间隔不能超过180分钟', 'error');
+        return;
+      }
+
+      intervalMinutes = m;
+      until = Date.now() + m * 60 * 1000;
+      left.textContent = '剩余时间：' + fmt(until - Date.now());
+      left.style.background = 'rgba(52, 152, 219, 0.3)';
+      
+      btn.textContent = '停止计时';
+      btn.disabled = false;
+      
+      if (ticker) clearInterval(ticker);
+      ticker = setInterval(tick, 500);
+      
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => tick(), m * 60 * 1000 + 120);
+      persistState(true);
+      
+      showNow('计时开始', `将在 ${m} 分钟后提醒你休息`);
+      showStatus(`已设置 ${m} 分钟后提醒`, 'success');
+    };
+
+    // 页面加载时检查通知权限
+    window.addEventListener('load', () => {
+      const restored = restoreState();
+      if (!restored) {
+        if (Notification.permission === 'granted') {
+          showStatus('通知权限已授予，可以开始使用', 'success');
+        } else if (Notification.permission === 'denied') {
+          showStatus('通知权限被拒绝，请手动允许', 'error');
+        }
+      }
+    });
+
+    // 单独的“允许通知”按钮，方便用户手动触发
+    ask.onclick = async () => {
+      if (!("Notification" in window)) {
+        showStatus('此浏览器不支持通知', 'error');
+        return;
+      }
+      try {
+        const p = Notification.permission === 'default' 
+          ? await Notification.requestPermission() 
+          : Notification.permission;
+        if (p === 'granted') {
+          showStatus('已允许通知', 'success');
+          showNow('已开启通知', '到点会以系统通知提醒你');
+        } else if (p === 'denied') {
+          showStatus('通知被系统阻止，请在浏览器设置里允许', 'error');
+        } else {
+          showStatus('通知权限未变更', 'info');
+        }
+      } catch (e) {
+        showStatus('请求通知权限失败', 'error');
+      }
+    };
+
+    // 页面失焦时保持计时器运行
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden && timer) {
+        showNow('计时器在后台运行', '页面已最小化，但计时器仍在运行');
+      }
+    });
+  </script>
+</body>
+</html>
