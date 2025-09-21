@@ -134,8 +134,8 @@
     <h1>⏰ 久坐提醒</h1>
     
     <div class="form-group">
-      <label for="mins">提醒间隔（分钟）：</label>
-      <input id="mins" type="number" min="1" max="180" value="45" placeholder="输入分钟数">
+      <label for="mins">提醒间隔（固定 5 分钟）：</label>
+      <input id="mins" type="number" min="5" max="5" value="5" disabled>
     </div>
     <div class="form-group">
       <label><input id="repeat" type="checkbox" checked> 循环提醒（到点后自动继续）</label>
@@ -217,7 +217,7 @@
       
       // 震动提醒（如果支持）
       if (navigator.vibrate) {
-        navigator.vibrate([200, 100, 200, 100, 200]);
+        navigator.vibrate([300, 120, 300, 120, 600]);
       }
 
       // 蜂鸣音（若已预热音频上下文）
@@ -352,7 +352,9 @@
       if (!(await ensurePermission())) return;
 
       ensureAudio();
-      const m = Math.max(1, Number(mins.value || 0));
+      const m = 5; // 固定为5分钟
+      mins.value = 5;
+      mins.disabled = true;
       if (m > 180) {
         showStatus('提醒间隔不能超过180分钟', 'error');
         return;
