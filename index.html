@@ -134,11 +134,11 @@
     <h1>⏰ 久坐提醒</h1>
     
     <div class="form-group">
-      <label for="mins">提醒间隔（固定 5 分钟）：</label>
-      <input id="mins" type="number" min="5" max="5" value="5" disabled>
+      <label for="mins">提醒间隔（分钟）：</label>
+      <input id="mins" type="number" min="1" max="180" value="45" placeholder="输入分钟数">
     </div>
     <div class="form-group">
-      <label><input id="repeat" type="checkbox" checked> 循环提醒（到点后自动继续）</label>
+      <label><input id="repeat" type="checkbox" checked> 循环提醒（每 5 分钟自动继续）</label>
     </div>
     
     <button id="start">开始计时</button>
@@ -176,6 +176,7 @@
     let audioCtx = null;
 
     const STORAGE_KEY = 'sit_reminder_state_v1';
+    const REPEAT_INTERVAL_MINUTES = 5; // 循环固定 5 分钟
 
     function showStatus(message, type = 'info') {
       status.textContent = message;
@@ -221,7 +222,7 @@
       }
 
       // 蜂鸣音（若已预热音频上下文）
-      try { playBeep(); } catch {}
+      try { playBeepSequence(); } catch {}
     }
 
     function fmt(ms) {
@@ -240,13 +241,13 @@
         showStatus('提醒已发送！', 'success');
 
         // 循环或结束
-        if (repeat.checked && intervalMinutes > 0) {
-          until = Date.now() + intervalMinutes * 60 * 1000;
+        if (repeat.checked) {
+          until = Date.now() + REPEAT_INTERVAL_MINUTES * 60 * 1000;
           persistState(true);
           // 确保 ticker 存在
           if (!ticker) ticker = setInterval(tick, 500);
           if (timer) clearTimeout(timer);
-          timer = setTimeout(() => tick(), intervalMinutes * 60 * 1000 + 120);
+          timer = setTimeout(() => tick(), REPEAT_INTERVAL_MINUTES * 60 * 1000 + 120);
           // 恢复进行中的样式
           left.style.background = 'rgba(52, 152, 219, 0.3)';
         } else {
@@ -283,6 +284,7 @@
         const payload = {
           until,
           intervalMinutes,
+          repeatIntervalMinutes: REPEAT_INTERVAL_MINUTES,
           repeat: !!repeat.checked,
           running: true
         };
@@ -323,19 +325,34 @@
       } catch {}
     }
 
-    function playBeep() {
+    function playBeepAt(freq, startAt, duration, volume=0.25) {
+      const osc = audioCtx.createOscillator();
+      const g = audioCtx.createGain();
+      osc.type = 'sine';
+      osc.frequency.value = freq;
+      osc.connect(g).connect(audioCtx.destination);
+      const t = startAt;
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(volume, t + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + duration);
+      osc.start(t);
+      osc.stop(t + duration + 0.02);
+    }
+
+    function playBeepSequence() {
       if (!audioCtx) return;
-      const duration = 0.35; // 秒
-      const oscillator = audioCtx.createOscillator();
-      const gain = audioCtx.createGain();
-      oscillator.type = 'sine';
-      oscillator.frequency.value = 880; // Hz
-      gain.gain.setValueAtTime(0.001, audioCtx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.2, audioCtx.currentTime + 0.05);
-      gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + duration);
-      oscillator.connect(gain).connect(audioCtx.destination);
-      oscillator.start();
-      oscillator.stop(audioCtx.currentTime + duration + 0.02);
+      const base = audioCtx.currentTime + 0.01;
+      let t = base;
+      const short = 0.12;
+      const gapS = 0.08;
+      const gapM = 0.16;
+      // 三短 + 两短 + 一长（不同音高）
+      playBeepAt(880, t, short); t += short + gapS;
+      playBeepAt(880, t, short); t += short + gapS;
+      playBeepAt(880, t, short); t += short + gapM;
+      playBeepAt(660, t, short); t += short + gapS;
+      playBeepAt(660, t, short); t += short + gapM;
+      playBeepAt(990, t, 0.28, 0.28);
     }
 
     btn.onclick = async () => {
@@ -352,9 +369,7 @@
       if (!(await ensurePermission())) return;
 
       ensureAudio();
-      const m = 5; // 固定为5分钟
-      mins.value = 5;
-      mins.disabled = true;
+      const m = Math.max(1, Number(mins.value || 0));
       if (m > 180) {
         showStatus('提醒间隔不能超过180分钟', 'error');
         return;
