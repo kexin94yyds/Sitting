@@ -210,7 +210,10 @@
         new Notification(title, {
           body,
           icon: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">⏰</text></svg>',
-          badge: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">⏰</text></svg>'
+          badge: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">⏰</text></svg>',
+          requireInteraction: true, // 保持通知常驻，避免错过
+          tag: 'sit-reminder',      // 同一标签避免堆积
+          renotify: false           // 替换而非反复叮咚
         });
       } catch (e) {
         alert(`${title}\n${body}`);
