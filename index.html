@@ -390,7 +390,7 @@
       timer = setTimeout(() => tick(), m * 60 * 1000 + 120);
       persistState(true);
       
-      showNow('计时开始', `将在 ${m} 分钟后提醒你休息`);
+      // 仅在到点时发送系统通知；开始时不弹通知，避免打扰
       showStatus(`已设置 ${m} 分钟后提醒`, 'success');
     };
 
@@ -418,7 +418,7 @@
           : Notification.permission;
         if (p === 'granted') {
           showStatus('已允许通知', 'success');
-          showNow('已开启通知', '到点会以系统通知提醒你');
+          // 不额外弹通知，避免无关打扰
         } else if (p === 'denied') {
           showStatus('通知被系统阻止，请在浏览器设置里允许', 'error');
         } else {
@@ -436,11 +436,7 @@
     };
 
     // 页面失焦时保持计时器运行
-    document.addEventListener('visibilitychange', () => {
-      if (document.hidden && timer) {
-        showNow('计时器在后台运行', '页面已最小化，但计时器仍在运行');
-      }
-    });
+    // 不在切换到后台时发送系统通知，避免干扰
 
     // 页面加载时检查是否需要显示安装提示
     window.addEventListener('load', () => {
