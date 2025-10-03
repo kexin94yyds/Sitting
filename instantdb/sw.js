@@ -1,5 +1,5 @@
 // Service Worker for 久坐提醒 PWA (Instant DB 版本)
-const CACHE_NAME = 'sit-reminder-instantdb-v1';
+const CACHE_NAME = 'sit-reminder-instantdb-v2';
 const urlsToCache = [
   '.',
   './index.html',
@@ -163,18 +163,38 @@ self.addEventListener('message', event => {
 
 // 网络请求拦截
 self.addEventListener('fetch', event => {
-  event.respondWith(
-    caches.match(event.request)
-      .then(response => {
-        // 如果缓存中有，返回缓存版本
-        if (response) {
-          return response;
+  // 对于HTML文件，优先从网络获取，确保获取最新版本
+  if (event.request.url.includes('.html') || event.request.url.endsWith('/')) {
+    event.respondWith(
+      fetch(event.request).then(response => {
+        // 如果网络请求成功，更新缓存
+        if (response.ok) {
+          const responseClone = response.clone();
+          caches.open(CACHE_NAME).then(cache => {
+            cache.put(event.request, responseClone);
+          });
         }
-        
-        // 否则从网络获取
-        return fetch(event.request);
+        return response;
+      }).catch(() => {
+        // 网络失败时返回缓存版本
+        return caches.match(event.request);
       })
-  );
+    );
+  } else {
+    // 其他资源使用缓存优先策略
+    event.respondWith(
+      caches.match(event.request)
+        .then(response => {
+          // 如果缓存中有，返回缓存版本
+          if (response) {
+            return response;
+          }
+          
+          // 否则从网络获取
+          return fetch(event.request);
+        })
+    );
+  }
 });
 
 // 定期检查提醒（作为备用方案）
