@@ -132,8 +132,8 @@
     }
     
     .status.info {
-      background: rgba(128, 128, 128, 0.2);
-      color: #666;
+      background: rgba(52, 152, 219, 0.2);
+      color: #3498db;
     }
   </style>
 </head>
@@ -260,7 +260,7 @@
           if (timer) clearTimeout(timer);
           timer = setTimeout(() => tick(), REPEAT_INTERVAL_MINUTES * 60 * 1000 + 120);
           // 恢复进行中的样式
-          left.style.background = 'rgba(0, 0, 0, 0.1)';
+          left.style.background = 'rgba(52, 152, 219, 0.3)';
         } else {
           clearInterval(ticker);
           ticker = null;
@@ -316,7 +316,7 @@
         if (remain <= 0) { localStorage.removeItem(STORAGE_KEY); return false; }
 
         left.textContent = '剩余时间：' + fmt(remain);
-        left.style.background = 'rgba(0, 0, 0, 0.1)';
+        left.style.background = 'rgba(52, 152, 219, 0.3)';
         btn.textContent = '停止计时';
         btn.disabled = false;
         ticker = setInterval(tick, 500);
@@ -389,7 +389,7 @@
       intervalMinutes = m;
       until = Date.now() + m * 60 * 1000;
       left.textContent = '剩余时间：' + fmt(until - Date.now());
-      left.style.background = 'rgba(0, 0, 0, 0.1)';
+      left.style.background = 'rgba(52, 152, 219, 0.3)';
       
       btn.textContent = '停止计时';
       btn.disabled = false;
