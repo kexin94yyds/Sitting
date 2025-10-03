@@ -141,3 +141,7 @@ FROM reminders
 WHERE created_at >= NOW() - INTERVAL '30 days'
 GROUP BY DATE(created_at)
 ORDER BY date DESC;
+
+
+
+

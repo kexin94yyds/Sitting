@@ -187,3 +187,7 @@ setInterval(async () => {
     console.error('定期检查失败:', error);
   }
 }, 60000); // 每分钟检查一次
+
+
+
+
