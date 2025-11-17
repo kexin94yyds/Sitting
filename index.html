@@ -150,7 +150,7 @@
     </div>
     
     <button id="start">开始计时</button>
-    <button id="ask">允许通知</button>
+    <button id="ask" style="display: none;">允许通知</button>
     
     <div id="left">设置提醒间隔，点击开始计时</div>
     <div id="status"></div>
@@ -163,10 +163,14 @@
   </div>
 
   <script>
-    // 注册根级 Service Worker，便于 iOS 安装为PWA
-    if ('serviceWorker' in navigator) {
+    // 检测是否在 Electron 环境中
+    const isElectron = typeof window !== 'undefined' && window.electronAPI;
+    
+    // 注册根级 Service Worker，便于 iOS 安装为PWA（仅在非 Electron 环境）
+    if (!isElectron && 'serviceWorker' in navigator) {
       navigator.serviceWorker.register('/sw.js').catch(()=>{});
     }
+    
     const $ = sel => document.querySelector(sel);
     const btn = $('#start');
     const mins = $('#mins');
@@ -197,7 +201,7 @@
 
     async function ensurePermission() {
       if (!("Notification" in window)) {
-        showStatus("此浏览器不支持通知", 'error');
+        showStatus("此浏览器不支持系统通知，将仅使用页面/声音提醒", 'info');
         return false;
       }
       
@@ -206,7 +210,7 @@
         : Notification.permission;
         
       if (p !== 'granted') {
-        showStatus('请允许通知权限才能收到提醒', 'error');
+        showStatus('未授予通知权限，将仅使用页面/声音提醒', 'info');
         return false;
       }
       
@@ -248,7 +252,11 @@
       if (ms <= 0) {
         left.innerHTML = '🎉 到点啦！<br>起来活动一下～';
         left.style.background = 'rgba(46, 204, 113, 0.3)';
-        showNow('该休息啦', '站起来走动下，喝口水 👟');
+        
+        // Electron 环境下，通知由主进程发送，这里只更新 UI
+        if (!isElectron || !window.electronAPI) {
+          showNow('该休息啦', '站起来走动下，喝口水 👟');
+        }
         showStatus('提醒已发送！', 'success');
 
         // 循环或结束
@@ -268,6 +276,11 @@
           btn.textContent = '重新开始';
           btn.disabled = false;
           persistState(false);
+          
+          // Electron 环境下停止主进程的提醒
+          if (isElectron && window.electronAPI) {
+            window.electronAPI.stopReminder();
+          }
         }
       } else {
         left.textContent = '剩余时间：' + fmt(ms);
@@ -367,6 +380,54 @@
     }
 
     btn.onclick = async () => {
+      // Electron 环境：使用主进程的定时器
+      if (isElectron && window.electronAPI) {
+        if (timer) {
+          // 停止当前计时
+          stopTimer();
+          window.electronAPI.stopReminder();
+          left.textContent = '计时已停止';
+          left.style.background = 'rgba(255, 255, 255, 0.1)';
+          btn.textContent = '开始计时';
+          showStatus('计时已停止', 'info');
+          return;
+        }
+
+        const m = Math.max(1, Number(mins.value || 0));
+        if (m > 180) {
+          showStatus('提醒间隔不能超过180分钟', 'error');
+          return;
+        }
+
+        // 更新设置到主进程
+        window.electronAPI.updateSettings({
+          reminderInterval: m,
+          repeatEnabled: repeat.checked
+        });
+
+        // 启动主进程的提醒
+        window.electronAPI.startReminder(m);
+        
+        intervalMinutes = m;
+        until = Date.now() + m * 60 * 1000;
+        left.textContent = '剩余时间：' + fmt(until - Date.now());
+        left.style.background = 'rgba(52, 152, 219, 0.3)';
+        
+        btn.textContent = '停止计时';
+        btn.disabled = false;
+        
+        if (ticker) clearInterval(ticker);
+        ticker = setInterval(tick, 500);
+        
+        if (timer) clearTimeout(timer);
+        timer = setTimeout(() => tick(), m * 60 * 1000 + 120);
+        persistState(true);
+        
+        showStatus(`已设置 ${m} 分钟后提醒`, 'success');
+        return;
+      }
+
+      // 浏览器环境：原有逻辑
       if (timer) {
         // 停止当前计时
         stopTimer();
@@ -377,7 +438,12 @@
         return;
       }
 
-      if (!(await ensurePermission())) return;
+      // 浏览器环境：尽量不因通知权限问题阻塞计时
+      try {
+        await ensurePermission();
+      } catch (e) {
+        // 权限请求异常时忽略，仅使用页面/声音提醒
+      }
 
       ensureAudio();
       const m = Math.max(1, Number(mins.value || 0));
@@ -405,8 +471,68 @@
       showStatus(`已设置 ${m} 分钟后提醒`, 'success');
     };
 
-    // 页面加载时检查通知权限
-    window.addEventListener('load', () => {
+    // 页面加载时检查通知权限和恢复状态
+    window.addEventListener('load', async () => {
+      // Electron 环境：从主进程加载设置
+      if (isElectron && window.electronAPI) {
+        try {
+          const settings = await window.electronAPI.getSettings();
+          if (settings.reminderInterval) {
+            mins.value = settings.reminderInterval;
+          }
+          if (settings.repeatEnabled !== undefined) {
+            repeat.checked = settings.repeatEnabled;
+          }
+          
+          // 监听主进程的提醒状态变化
+          window.electronAPI.onReminderStarted((interval) => {
+            intervalMinutes = interval;
+            until = Date.now() + intervalMinutes * 60 * 1000;
+            left.textContent = '剩余时间：' + fmt(until - Date.now());
+            left.style.background = 'rgba(52, 152, 219, 0.3)';
+            btn.textContent = '停止计时';
+            btn.disabled = false;
+            
+            if (ticker) clearInterval(ticker);
+            ticker = setInterval(tick, 500);
+            
+            if (timer) clearTimeout(timer);
+            timer = setTimeout(() => tick(), intervalMinutes * 60 * 1000 + 120);
+            persistState(true);
+          });
+          
+          window.electronAPI.onReminderStopped(() => {
+            stopTimer();
+            left.textContent = '计时已停止';
+            left.style.background = 'rgba(255, 255, 255, 0.1)';
+            btn.textContent = '开始计时';
+          });
+          
+          // 如果主进程正在运行，恢复 UI 状态
+          if (settings.isRunning) {
+            const interval = settings.reminderInterval || 45;
+            intervalMinutes = interval;
+            until = Date.now() + interval * 60 * 1000;
+            left.textContent = '剩余时间：' + fmt(until - Date.now());
+            left.style.background = 'rgba(52, 152, 219, 0.3)';
+            btn.textContent = '停止计时';
+            btn.disabled = false;
+            
+            if (ticker) clearInterval(ticker);
+            ticker = setInterval(tick, 500);
+            
+            if (timer) clearTimeout(timer);
+            timer = setTimeout(() => tick(), interval * 60 * 1000 + 120);
+          }
+          
+          showStatus('Electron 桌面应用已就绪', 'success');
+        } catch (e) {
+          console.error('Failed to load Electron settings:', e);
+        }
+        return;
+      }
+      
+      // 浏览器环境：原有逻辑
       const restored = restoreState();
       if (!restored) {
         if (Notification.permission === 'granted') {
@@ -449,8 +575,15 @@
     // 页面失焦时保持计时器运行
     // 不在切换到后台时发送系统通知，避免干扰
 
-    // 页面加载时检查是否需要显示安装提示
+    // 页面加载时检查是否需要显示安装提示（仅在浏览器环境）
     window.addEventListener('load', () => {
+      if (isElectron) {
+        // Electron 环境：隐藏安装提示和"允许通知"按钮
+        installPrompt.style.display = 'none';
+        ask.style.display = 'none';
+        return;
+      }
+      
       const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
       const isStandalone = window.matchMedia('(display-mode: standalone)').matches;
       const promptDismissed = localStorage.getItem('install_prompt_dismissed');

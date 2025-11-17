@@ -2,10 +2,14 @@
   "name": "sit-reminder",
   "version": "1.0.0",
   "description": "智能久坐提醒应用，支持后台推送通知",
-  "main": "index.html",
+  "main": "main.js",
   "scripts": {
     "dev": "npx serve . -p 3000",
-    "build": "echo 'No build step required for static files'",
+    "electron": "electron .",
+    "electron:dev": "NODE_ENV=development electron .",
+    "build": "electron-builder",
+    "build:mac": "electron-builder --mac",
+    "build:win": "electron-builder --win",
     "deploy": "echo 'Deploy to your preferred static hosting service'",
     "setup-supabase": "echo 'Run supabase-setup.sql in your Supabase project'",
     "generate-vapid": "npx web-push generate-vapid-keys"
@@ -22,10 +26,47 @@
   "license": "MIT",
   "devDependencies": {
     "serve": "^14.2.1",
-    "web-push": "^3.6.6"
+    "web-push": "^3.6.6",
+    "electron": "^28.0.0",
+    "electron-builder": "^24.9.1"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.38.0"
+    "@supabase/supabase-js": "^2.38.0",
+    "electron-store": "^8.1.0"
+  },
+  "build": {
+    "appId": "com.sitreminder.app",
+    "productName": "久坐提醒",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "index.html",
+      "favicon.png",
+      "icon.svg",
+      "manifest.json"
+    ],
+    "mac": {
+      "category": "public.app-category.healthcare-fitness",
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "icon": "favicon.png"
+    },
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ],
+      "icon": "favicon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
   },
   "repository": {
     "type": "git",
