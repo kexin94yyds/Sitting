@@ -91,17 +91,17 @@ self.addEventListener('notificationclick', event => {
     event.waitUntil(
       clients.matchAll({ type: 'window', includeUncontrolled: true })
         .then(clientList => {
-          const url = new URL('/', self.location.origin).toString();
+          const scopeUrl = (self.registration && self.registration.scope) || new URL('.', self.location).toString();
           
           for (const client of clientList) {
-            if (client.url === url) {
+            if (client.url.startsWith(scopeUrl)) {
               client.focus();
               client.postMessage({ type: 'RESTART_TIMER' });
               return;
             }
           }
           
-          return clients.openWindow('/');
+          return clients.openWindow(scopeUrl);
         })
     );
   } else if (event.action === 'dismiss') {
@@ -125,10 +125,10 @@ self.addEventListener('notificationclick', event => {
     event.waitUntil(
       clients.matchAll({ type: 'window', includeUncontrolled: true })
         .then(clientList => {
-          const url = new URL('/', self.location.origin).toString();
+          const scopeUrl = (self.registration && self.registration.scope) || new URL('.', self.location).toString();
           
           for (const client of clientList) {
-            if (client.url === url) {
+            if (client.url.startsWith(scopeUrl)) {
               client.focus();
               client.postMessage({ 
                 type: 'REMINDER',
@@ -138,7 +138,7 @@ self.addEventListener('notificationclick', event => {
             }
           }
           
-          return clients.openWindow('/');
+          return clients.openWindow(scopeUrl);
         })
     );
   }
@@ -207,7 +207,6 @@ setInterval(async () => {
     console.error('定期检查失败:', error);
   }
 }, 60000); // 每分钟检查一次
-
 
 
 

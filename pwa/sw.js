@@ -1,9 +1,10 @@
 // Service Worker for 久坐提醒 PWA
 const CACHE_NAME = 'sit-reminder-v2';
+// 使用相对路径，既支持在 /pwa/ 子目录下部署，也支持作为站点根目录部署
 const urlsToCache = [
-  '/',
-  '/index.html',
-  '/manifest.json'
+  '.',
+  './index.html',
+  './manifest.json'
 ];
 
 // 安装事件
@@ -87,17 +88,17 @@ self.addEventListener('notificationclick', event => {
     event.waitUntil(
       clients.matchAll({ type: 'window', includeUncontrolled: true })
         .then(clientList => {
-          const url = new URL('/', self.location.origin).toString();
+          const scopeUrl = (self.registration && self.registration.scope) || new URL('.', self.location).toString();
           
           for (const client of clientList) {
-            if (client.url === url) {
+            if (client.url.startsWith(scopeUrl)) {
               client.focus();
               client.postMessage({ type: 'RESTART_TIMER' });
               return;
             }
           }
           
-          return clients.openWindow('/');
+          return clients.openWindow(scopeUrl);
         })
     );
   } else if (event.action === 'dismiss') {
@@ -108,17 +109,17 @@ self.addEventListener('notificationclick', event => {
     event.waitUntil(
       clients.matchAll({ type: 'window', includeUncontrolled: true })
         .then(clientList => {
-          const url = new URL('/', self.location.origin).toString();
+          const scopeUrl = (self.registration && self.registration.scope) || new URL('.', self.location).toString();
           
           for (const client of clientList) {
-            if (client.url === url) {
+            if (client.url.startsWith(scopeUrl)) {
               client.focus();
               client.postMessage({ type: 'REMINDER' });
               return;
             }
           }
           
-          return clients.openWindow('/');
+          return clients.openWindow(scopeUrl);
         })
     );
   }
@@ -176,7 +177,6 @@ self.addEventListener('fetch', event => {
     );
   }
 });
-
 
 
 

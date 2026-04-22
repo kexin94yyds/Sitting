@@ -4,7 +4,8 @@
   <meta charset="utf-8" />
   <title>久坐提醒 PWA</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <link rel="manifest" href="/manifest.json">
+  <!-- 使用相对路径，既支持 /pwa/ 子路径，也支持作为站点根目录部署 -->
+  <link rel="manifest" href="manifest.json">
   <style>
     body { 
       font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; 
@@ -187,7 +188,8 @@
         throw new Error('Service Worker 不支持');
       }
       
-      const reg = await navigator.serviceWorker.register('/sw.js');
+      // 使用相对路径，避免在 /pwa/ 子路径下注册到站点根目录的 SW
+      const reg = await navigator.serviceWorker.register('./sw.js');
       await navigator.serviceWorker.ready;
       return reg;
     }
@@ -333,14 +335,16 @@
       }, 5 * 60 * 1000);
     }
 
-    // 监听来自 Service Worker 的提醒
-    navigator.serviceWorker.addEventListener('message', event => {
-      if (event.data.type === 'REMINDER') {
-        left.innerHTML = '🎉 到点啦！<br>起来活动一下～';
-        left.style.background = 'rgba(46, 204, 113, 0.3)';
-        showStatus('提醒已推送！', 'success');
-      }
-    });
+    // 监听来自 Service Worker 的提醒（仅在支持 Service Worker 的环境下）
+    if ('serviceWorker' in navigator && navigator.serviceWorker) {
+      navigator.serviceWorker.addEventListener('message', event => {
+        if (event.data && event.data.type === 'REMINDER') {
+          left.innerHTML = '🎉 到点啦！<br>起来活动一下～';
+          left.style.background = 'rgba(46, 204, 113, 0.3)';
+          showStatus('提醒已推送！', 'success');
+        }
+      });
+    }
 
     btn.onclick = startReminder;
 
@@ -358,7 +362,6 @@
   </script>
 </body>
 </html>
-
 
 
 

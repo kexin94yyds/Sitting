@@ -411,24 +411,26 @@
         `).join('');
     }
 
-    // 监听来自 Service Worker 的提醒
-    navigator.serviceWorker.addEventListener('message', event => {
-      if (event.data.type === 'REMINDER') {
-        left.innerHTML = '🎉 到点啦！<br>起来活动一下～';
-        left.style.background = 'rgba(46, 204, 113, 0.3)';
-        showStatus('提醒已推送！', 'success');
-        
-        // 更新提醒状态
-        if (currentReminder) {
-          tx(db).set({
-            reminders: {
-              id: currentReminder.id,
-              status: 'sent'
-            }
-          });
+    // 监听来自 Service Worker 的提醒（仅在支持 Service Worker 的环境下）
+    if ('serviceWorker' in navigator && navigator.serviceWorker) {
+      navigator.serviceWorker.addEventListener('message', event => {
+        if (event.data && event.data.type === 'REMINDER') {
+          left.innerHTML = '🎉 到点啦！<br>起来活动一下～';
+          left.style.background = 'rgba(46, 204, 113, 0.3)';
+          showStatus('提醒已推送！', 'success');
+          
+          // 更新提醒状态
+          if (currentReminder) {
+            tx(db).set({
+              reminders: {
+                id: currentReminder.id,
+                status: 'sent'
+              }
+            });
+          }
         }
-      }
-    });
+      });
+    }
 
     btn.onclick = startReminder;
 
