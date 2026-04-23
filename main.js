@@ -145,9 +145,14 @@ function dispatch(event) {
   state = reduce(state, event);
 
   persistState();
-  runEffects(previousState, state, event);
-  broadcastState();
-  updateTrayMenu();
+  try {
+    runEffects(previousState, state, event);
+  } catch (error) {
+    console.error('Reminder side effect failed:', error);
+  } finally {
+    broadcastState();
+    updateTrayMenu();
+  }
 }
 
 function runEffects(previousState, nextState) {
