@@ -1,17 +1,23 @@
-const { app, BrowserWindow, Tray, Menu, Notification, ipcMain, nativeImage } = require('electron');
+const { app, BrowserWindow, Tray, Menu, ipcMain, nativeImage, powerMonitor } = require('electron');
 const path = require('path');
 const Store = require('electron-store');
+const { createInitialState, normalizeSettings, reduce } = require('./main/reminderState');
+const { createPowerMonitorSource } = require('./main/activitySources/powerMonitorSource');
+const { createNotificationService } = require('./main/notificationService');
+const { createRestWindowService } = require('./main/restWindow');
 
-// 初始化配置存储
 const store = new Store();
+const SETTINGS_KEY = 'reminderSettingsV2';
+const RUNTIME_KEY = 'reminderRuntimeV2';
 
 let mainWindow = null;
 let tray = null;
-let reminderTimer = null;
-let reminderInterval = null;
-let isRunning = false;
+let state = createInitialState(loadSettings());
+let powerMonitorSource = null;
+let notificationService = null;
+let restWindowService = null;
+let tickTimer = null;
 
-// 创建主窗口
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 600,
@@ -23,13 +29,11 @@ function createWindow() {
     },
     icon: path.join(__dirname, 'favicon.png'),
     titleBarStyle: 'default',
-    show: false // 初始不显示，点击托盘时再显示
+    show: false
   });
 
-  // 加载 HTML 文件
   mainWindow.loadFile('index.html');
 
-  // 窗口关闭时隐藏而不是退出
   mainWindow.on('close', (event) => {
     if (!app.isQuitting) {
       event.preventDefault();
@@ -37,39 +41,57 @@ function createWindow() {
     }
   });
 
-  // 窗口显示时聚焦
   mainWindow.on('show', () => {
     mainWindow.focus();
+    sendStateToWindow(mainWindow);
+  });
+
+  mainWindow.webContents.on('did-finish-load', () => {
+    sendStateToWindow(mainWindow);
   });
 }
 
-// 创建托盘图标
 function createTray() {
   const iconPath = path.join(__dirname, 'favicon.png');
-  const icon = nativeImage.createFromPath(iconPath);
-  
-  // 调整图标大小以适应托盘
-  const resizedIcon = icon.resize({ width: 16, height: 16 });
-  
-  tray = new Tray(resizedIcon);
-  
+  const icon = nativeImage.createFromPath(iconPath).resize({ width: 16, height: 16 });
+
+  tray = new Tray(icon);
+  tray.setToolTip('久坐提醒');
+  tray.on('click', () => {
+    if (mainWindow?.isVisible()) {
+      mainWindow.hide();
+    } else {
+      showWindow();
+    }
+  });
+
+  updateTrayMenu();
+}
+
+function updateTrayMenu() {
+  if (!tray) return;
+
+  const isTracking = state.phase !== 'idle' && state.phase !== 'paused';
   const contextMenu = Menu.buildFromTemplate([
     {
-      label: isRunning ? '⏸ 暂停提醒' : '▶ 开始提醒',
+      label: isTracking ? '暂停提醒' : '开始提醒',
       click: () => {
-        if (isRunning) {
-          stopReminder();
-        } else {
-          const interval = store.get('reminderInterval', 45);
-          startReminder(interval);
-        }
+        dispatch({ type: isTracking ? 'PAUSE_TRACKING' : 'START_TRACKING' });
       }
     },
     {
-      label: '⚙️ 设置',
-      click: () => {
-        showWindow();
-      }
+      label: '设置',
+      click: () => showWindow()
+    },
+    {
+      label: '开始休息',
+      enabled: isTracking,
+      click: () => dispatch({ type: 'START_BREAK' })
+    },
+    {
+      label: '稍后 5 分钟',
+      enabled: isTracking,
+      click: () => dispatch({ type: 'SNOOZE' })
     },
     { type: 'separator' },
     {
@@ -81,20 +103,9 @@ function createTray() {
     }
   ]);
 
-  tray.setToolTip('久坐提醒');
   tray.setContextMenu(contextMenu);
-  
-  // 点击托盘图标显示/隐藏窗口
-  tray.on('click', () => {
-    if (mainWindow.isVisible()) {
-      mainWindow.hide();
-    } else {
-      showWindow();
-    }
-  });
 }
 
-// 显示窗口
 function showWindow() {
   if (mainWindow) {
     mainWindow.show();
@@ -102,161 +113,246 @@ function showWindow() {
   }
 }
 
-// 发送通知
-function sendNotification(title, body) {
-  if (Notification.isSupported()) {
-    const notification = new Notification({
-      title: title || '该休息啦',
-      body: body || '站起来走动下，喝口水 👟',
-      icon: path.join(__dirname, 'favicon.png'),
-      urgency: 'normal'
-    });
-    
-    notification.show();
-    
-    // 点击通知时显示窗口
-    notification.on('click', () => {
-      showWindow();
-    });
+function startRuntime() {
+  notificationService = createNotificationService(dispatch);
+  restWindowService = createRestWindowService(dispatch);
+  powerMonitorSource = createPowerMonitorSource(powerMonitor, dispatch, () => state.settings);
+  powerMonitorSource.start();
+
+  hydrateRuntimeState();
+
+  tickTimer = setInterval(runTick, 1000);
+  runTick();
+}
+
+function stopRuntime() {
+  if (tickTimer) {
+    clearInterval(tickTimer);
+    tickTimer = null;
+  }
+  powerMonitorSource?.stop();
+  restWindowService?.destroy();
+}
+
+function runTick() {
+  const snapshot = powerMonitorSource.getSnapshot();
+  dispatch({ type: 'ACTIVITY_SNAPSHOT', ...snapshot });
+  dispatch({ type: 'TICK', systemActive: snapshot.systemActive });
+}
+
+function dispatch(event) {
+  const previousState = state;
+  state = reduce(state, event);
+
+  persistState();
+  runEffects(previousState, state, event);
+  broadcastState();
+  updateTrayMenu();
+}
+
+function runEffects(previousState, nextState) {
+  if (nextState.phase === 'notifying' && nextState.lastNotificationAt === 0) {
+    notificationService.showBreakNotification(nextState);
+    return;
+  }
+
+  if (previousState.phase !== 'break-window' && nextState.phase === 'break-window') {
+    restWindowService.show(mainWindow, nextState);
+    return;
+  }
+
+  if (previousState.phase === 'break-window' && nextState.phase !== 'break-window') {
+    restWindowService.hide();
   }
 }
 
-// 开始提醒
-function startReminder(intervalMinutes) {
-  stopReminder(); // 先停止现有的
-  
-  isRunning = true;
-  store.set('reminderInterval', intervalMinutes);
-  store.set('isRunning', true);
-  
-  const intervalMs = intervalMinutes * 60 * 1000;
-  const repeatEnabled = store.get('repeatEnabled', false);
-  
-  // 发送第一次提醒的函数
-  const sendFirstReminder = () => {
-    sendNotification('该休息啦', '站起来走动下，喝口水 👟');
-    
-    // 如果启用了循环提醒，每5分钟提醒一次
-    if (repeatEnabled) {
-      reminderInterval = setInterval(() => {
-        sendNotification('该休息啦', '站起来走动下，喝口水 👟');
-      }, 5 * 60 * 1000); // 每5分钟
-    } else {
-      // 如果没有启用循环，停止提醒
-      stopReminder();
+function broadcastState() {
+  const payload = getPublicState();
+  BrowserWindow.getAllWindows().forEach((window) => {
+    if (!window.isDestroyed()) {
+      window.webContents.send('reminder-state', payload);
     }
+  });
+
+  if (state.phase === 'tracking') {
+    mainWindow?.webContents.send('reminder-started', getThresholdMinutes());
+  }
+
+  if (state.phase === 'idle' || state.phase === 'paused') {
+    mainWindow?.webContents.send('reminder-stopped');
+  }
+}
+
+function sendStateToWindow(window) {
+  if (!window || window.isDestroyed()) return;
+  window.webContents.send('reminder-state', getPublicState());
+}
+
+function getPublicState() {
+  return {
+    ...state,
+    remainingMs: Math.max(0, state.settings.thresholdMs - state.accumulatedMs)
   };
-  
-  // 设置第一次提醒的定时器
-  reminderTimer = setTimeout(sendFirstReminder, intervalMs);
-  
-  updateTrayMenu();
-  
-  // 通知渲染进程
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send('reminder-started', intervalMinutes);
-  }
 }
 
-// 停止提醒
-function stopReminder() {
-  if (reminderTimer) {
-    clearTimeout(reminderTimer);
-    reminderTimer = null;
+function loadSettings() {
+  const saved = store.get(SETTINGS_KEY);
+  if (saved) {
+    return normalizeSettings(saved);
   }
-  if (reminderInterval) {
-    clearInterval(reminderInterval);
-    reminderInterval = null;
-  }
-  
-  isRunning = false;
-  store.set('isRunning', false);
-  updateTrayMenu();
-  
-  // 通知渲染进程
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send('reminder-stopped');
-  }
+
+  return normalizeSettings({
+    thresholdMs: store.get('reminderInterval', 45) * 60 * 1000,
+    breakMs: store.get('breakMinutes', 5) * 60 * 1000,
+    snoozeMs: 5 * 60 * 1000
+  });
 }
 
-// 更新托盘菜单
-function updateTrayMenu() {
-  if (!tray) return;
-  
-  const contextMenu = Menu.buildFromTemplate([
-    {
-      label: isRunning ? '⏸ 暂停提醒' : '▶ 开始提醒',
-      click: () => {
-        if (isRunning) {
-          stopReminder();
-        } else {
-          const interval = store.get('reminderInterval', 45);
-          startReminder(interval);
+function hydrateRuntimeState() {
+  const saved = store.get(RUNTIME_KEY);
+  if (saved) {
+    dispatch({
+      type: 'HYDRATE',
+      state: {
+        ...saved,
+        lastTickAt: Date.now(),
+        flags: {
+          locked: false,
+          suspended: false,
+          systemActive: false
         }
       }
-    },
-    {
-      label: '⚙️ 设置',
-      click: () => {
-        showWindow();
-      }
-    },
-    { type: 'separator' },
-    {
-      label: '退出',
-      click: () => {
-        app.isQuitting = true;
-        app.quit();
-      }
-    }
-  ]);
-  
-  tray.setContextMenu(contextMenu);
+    });
+    return;
+  }
+
+  if (store.get('isRunning', false)) {
+    dispatch({ type: 'START_TRACKING' });
+  }
 }
 
-// IPC 处理
-ipcMain.handle('get-settings', () => {
-  return {
-    reminderInterval: store.get('reminderInterval', 45),
-    isRunning: store.get('isRunning', false),
-    repeatEnabled: store.get('repeatEnabled', false)
-  };
-});
+function persistState() {
+  store.set(SETTINGS_KEY, state.settings);
+  store.set('reminderInterval', getThresholdMinutes());
+  store.set('isRunning', state.phase !== 'idle' && state.phase !== 'paused');
+  store.set(RUNTIME_KEY, {
+    phase: state.phase,
+    mode: state.mode,
+    accumulatedMs: state.accumulatedMs,
+    lastTickAt: Date.now(),
+    snoozeUntil: state.snoozeUntil,
+    cooldownUntil: state.cooldownUntil,
+    lastNotificationAt: state.lastNotificationAt,
+    settings: state.settings
+  });
+}
 
-ipcMain.on('start-reminder', (event, intervalMinutes) => {
-  startReminder(intervalMinutes);
-});
+function getThresholdMinutes() {
+  return Math.max(1, Math.round(state.settings.thresholdMs / 60000));
+}
 
-ipcMain.on('stop-reminder', () => {
-  stopReminder();
-});
-
-ipcMain.on('update-settings', (event, settings) => {
+function toSettingsPatch(settings = {}) {
+  const patch = {};
   if (settings.reminderInterval !== undefined) {
-    store.set('reminderInterval', settings.reminderInterval);
+    patch.thresholdMs = Number(settings.reminderInterval) * 60 * 1000;
   }
-  if (settings.repeatEnabled !== undefined) {
-    store.set('repeatEnabled', settings.repeatEnabled);
+  if (settings.thresholdMinutes !== undefined) {
+    patch.thresholdMs = Number(settings.thresholdMinutes) * 60 * 1000;
   }
-});
+  if (settings.thresholdMs !== undefined) {
+    patch.thresholdMs = Number(settings.thresholdMs);
+  }
+  if (settings.breakMinutes !== undefined) {
+    patch.breakMs = Number(settings.breakMinutes) * 60 * 1000;
+  }
+  if (settings.breakMs !== undefined) {
+    patch.breakMs = Number(settings.breakMs);
+  }
+  if (settings.snoozeMinutes !== undefined) {
+    patch.snoozeMs = Number(settings.snoozeMinutes) * 60 * 1000;
+  }
+  if (settings.snoozeMs !== undefined) {
+    patch.snoozeMs = Number(settings.snoozeMs);
+  }
+  if (settings.idleThresholdSec !== undefined) {
+    patch.idleThresholdSec = Number(settings.idleThresholdSec);
+  }
+  if (settings.notificationGraceMs !== undefined) {
+    patch.notificationGraceMs = Number(settings.notificationGraceMs);
+  }
+  return patch;
+}
 
-ipcMain.on('show-window', () => {
-  showWindow();
-});
+function registerIpc() {
+  ipcMain.handle('get-settings', () => ({
+    reminderInterval: getThresholdMinutes(),
+    isRunning: state.phase !== 'idle' && state.phase !== 'paused',
+    repeatEnabled: false,
+    state: getPublicState()
+  }));
 
-// 应用准备就绪
+  ipcMain.handle('get-reminder-state', () => getPublicState());
+
+  ipcMain.handle('update-reminder-settings', (event, settings) => {
+    dispatch({ type: 'UPDATE_SETTINGS', settings: toSettingsPatch(settings) });
+    return getPublicState();
+  });
+
+  ipcMain.handle('start-tracking', () => {
+    dispatch({ type: 'START_TRACKING' });
+    return getPublicState();
+  });
+
+  ipcMain.handle('pause-tracking', () => {
+    dispatch({ type: 'PAUSE_TRACKING' });
+    return getPublicState();
+  });
+
+  ipcMain.handle('stop-tracking', () => {
+    dispatch({ type: 'STOP_TRACKING' });
+    return getPublicState();
+  });
+
+  ipcMain.handle('start-break', () => {
+    dispatch({ type: 'START_BREAK' });
+    return getPublicState();
+  });
+
+  ipcMain.handle('snooze', (event, minutes) => {
+    const ms = Number(minutes) > 0 ? Number(minutes) * 60 * 1000 : state.settings.snoozeMs;
+    dispatch({ type: 'SNOOZE', ms });
+    return getPublicState();
+  });
+
+  ipcMain.handle('skip-once', () => {
+    dispatch({ type: 'SKIP_ONCE' });
+    return getPublicState();
+  });
+
+  ipcMain.on('start-reminder', (event, intervalMinutes) => {
+    dispatch({ type: 'UPDATE_SETTINGS', settings: toSettingsPatch({ reminderInterval: intervalMinutes }) });
+    dispatch({ type: 'START_TRACKING' });
+  });
+
+  ipcMain.on('stop-reminder', () => {
+    dispatch({ type: 'PAUSE_TRACKING' });
+  });
+
+  ipcMain.on('update-settings', (event, settings) => {
+    dispatch({ type: 'UPDATE_SETTINGS', settings: toSettingsPatch(settings) });
+  });
+
+  ipcMain.on('show-window', () => {
+    showWindow();
+  });
+}
+
 app.whenReady().then(() => {
   createWindow();
   createTray();
-  
-  // 恢复之前的状态
-  const wasRunning = store.get('isRunning', false);
-  if (wasRunning) {
-    const interval = store.get('reminderInterval', 45);
-    startReminder(interval);
-  }
-  
-  // macOS 特殊处理
+  registerIpc();
+  startRuntime();
+
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
       createWindow();
@@ -266,18 +362,13 @@ app.whenReady().then(() => {
   });
 });
 
-// 所有窗口关闭时
 app.on('window-all-closed', () => {
-  // macOS 上通常应用会继续运行
   if (process.platform !== 'darwin') {
     app.quit();
   }
 });
 
-// 应用退出前清理
 app.on('before-quit', () => {
   app.isQuitting = true;
-  stopReminder();
+  stopRuntime();
 });
-
-
