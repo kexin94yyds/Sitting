@@ -558,6 +558,11 @@
           });
           window.electronAPI.subscribeReminderState(renderElectronState);
           renderElectronState(await window.electronAPI.getReminderState());
+          setInterval(async () => {
+            try {
+              renderElectronState(await window.electronAPI.getReminderState());
+            } catch {}
+          }, 1000);
           showStatus('Electron 桌面应用已就绪', 'success');
         } catch (e) {
           console.error('Failed to load Electron settings:', e);
