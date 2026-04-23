@@ -49,15 +49,15 @@ function createRestWindowService(dispatch) {
         console.error('Rest window failed to load:', errorCode, errorDescription);
       });
 
+      restWindow.once('ready-to-show', () => {
+        sendState(latestState);
+        showNow();
+      });
+
       restWindow.loadFile(path.join(__dirname, '..', 'rest.html')).catch((error) => {
         console.error('Rest window load failed:', error);
       });
     }
-
-    restWindow.once('ready-to-show', () => {
-      sendState(state);
-      showNow();
-    });
 
     if (restWindow.webContents.isLoading()) {
       return;
