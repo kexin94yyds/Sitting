@@ -3,8 +3,10 @@ const path = require('path');
 const Store = require('electron-store');
 const { createInitialState, normalizeSettings, reduce } = require('./main/reminderState');
 const { createPowerMonitorSource } = require('./main/activitySources/powerMonitorSource');
+const { createUiohookSource } = require('./main/activitySources/uiohookSource');
 const { createNotificationService } = require('./main/notificationService');
 const { createRestWindowService } = require('./main/restWindow');
+const { getAccessibilityStatus, requestAccessibilityPermission } = require('./main/permissionService');
 
 const store = new Store();
 const SETTINGS_KEY = 'reminderSettingsV2';
@@ -16,6 +18,7 @@ let state = createInitialState(loadSettings());
 let powerMonitorSource = null;
 let notificationService = null;
 let restWindowService = null;
+let typingHookSource = null;
 let tickTimer = null;
 
 function createWindow() {
@@ -130,6 +133,7 @@ function stopRuntime() {
     clearInterval(tickTimer);
     tickTimer = null;
   }
+  stopTypingHook();
   powerMonitorSource?.stop();
   restWindowService?.destroy();
 }
@@ -156,6 +160,10 @@ function dispatch(event) {
 }
 
 function runEffects(previousState, nextState) {
+  if (previousState.mode === 'typing' && nextState.mode !== 'typing') {
+    stopTypingHook();
+  }
+
   if (nextState.phase === 'notifying' && nextState.lastNotificationAt === 0) {
     notificationService.showBreakNotification(nextState);
     return;
@@ -237,7 +245,7 @@ function hydrateRuntimeState() {
 }
 
 function persistState() {
-  store.set(SETTINGS_KEY, state.settings);
+  store.set(SETTINGS_KEY, { ...state.settings, mode: state.mode });
   store.set('reminderInterval', getThresholdMinutes());
   store.set('isRunning', state.phase !== 'idle' && state.phase !== 'paused');
   store.set(RUNTIME_KEY, {
@@ -248,6 +256,7 @@ function persistState() {
     snoozeUntil: state.snoozeUntil,
     cooldownUntil: state.cooldownUntil,
     lastNotificationAt: state.lastNotificationAt,
+    typing: state.typing,
     settings: state.settings
   });
 }
@@ -285,7 +294,61 @@ function toSettingsPatch(settings = {}) {
   if (settings.notificationGraceMs !== undefined) {
     patch.notificationGraceMs = Number(settings.notificationGraceMs);
   }
+  if (settings.typingGapMinutes !== undefined) {
+    patch.typingGapMs = Number(settings.typingGapMinutes) * 60 * 1000;
+  }
+  if (settings.typingGapMs !== undefined) {
+    patch.typingGapMs = Number(settings.typingGapMs);
+  }
+  if (settings.mode === 'typing' || settings.mode === 'system-active') {
+    patch.mode = settings.mode;
+  }
   return patch;
+}
+
+function startTypingHook() {
+  if (state.mode !== 'typing') {
+    return { ok: false, status: 'disabled', error: 'typing mode is not active' };
+  }
+
+  const permissionStatus = getAccessibilityStatus();
+  dispatch({ type: 'PERMISSION_STATUS', status: permissionStatus });
+
+  if (process.platform === 'darwin' && permissionStatus !== 'authorized') {
+    dispatch({ type: 'HOOK_STATUS', status: 'permission-blocked', error: 'Accessibility permission is required' });
+    return { ok: false, status: 'permission-blocked', error: 'Accessibility permission is required' };
+  }
+
+  if (!typingHookSource) {
+    typingHookSource = createUiohookSource((eventTime) => {
+      dispatch({ type: 'KEY_ACTIVITY' }, eventTime);
+    });
+  }
+
+  const result = typingHookSource.start();
+  dispatch({ type: 'HOOK_STATUS', status: result.status, error: result.error });
+  return result;
+}
+
+function stopTypingHook() {
+  if (!typingHookSource) {
+    dispatch({ type: 'HOOK_STATUS', status: 'disabled' });
+    return;
+  }
+
+  const result = typingHookSource.stop();
+  dispatch({ type: 'HOOK_STATUS', status: result.status, error: result.error });
+}
+
+function enableTypingMode(promptForPermission) {
+  const permissionStatus = promptForPermission ? requestAccessibilityPermission() : getAccessibilityStatus();
+  dispatch({ type: 'PERMISSION_STATUS', status: permissionStatus });
+  dispatch({ type: 'UPDATE_SETTINGS', settings: { mode: 'typing' } });
+  const hookResult = startTypingHook();
+  return {
+    state: getPublicState(),
+    hookResult
+  };
 }
 
 function registerIpc() {
@@ -300,7 +363,17 @@ function registerIpc() {
 
   ipcMain.handle('update-reminder-settings', (event, settings) => {
     dispatch({ type: 'UPDATE_SETTINGS', settings: toSettingsPatch(settings) });
+    if (settings?.mode === 'typing') {
+      return enableTypingMode(false).state;
+    }
+    if (settings?.mode === 'system-active') {
+      stopTypingHook();
+    }
     return getPublicState();
+  });
+
+  ipcMain.handle('request-typing-mode-enable', () => {
+    return enableTypingMode(true);
   });
 
   ipcMain.handle('start-tracking', () => {
