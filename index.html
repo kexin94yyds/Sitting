@@ -47,7 +47,8 @@
       color: #000;
     }
     
-    input[type="number"] {
+    input[type="number"],
+    select {
       width: 100%;
       padding: 12px 16px;
       border: 2px solid #000;
@@ -61,7 +62,8 @@
       color: #666;
     }
     
-    input[type="number"]:focus {
+    input[type="number"]:focus,
+    select:focus {
       outline: none;
       background: #f0f0f0;
       border-color: #333;
@@ -145,6 +147,13 @@
       <label for="mins">提醒间隔（分钟）：</label>
       <input id="mins" type="number" min="1" max="180" value="45" placeholder="输入分钟数">
     </div>
+    <div class="form-group" id="mode-group" style="display: none;">
+      <label for="mode">监测模式：</label>
+      <select id="mode">
+        <option value="system-active">系统活跃</option>
+        <option value="typing">持续打字</option>
+      </select>
+    </div>
     <div class="form-group">
       <label><input id="repeat" type="checkbox" checked> 循环提醒（每 5 分钟自动继续）</label>
     </div>
@@ -174,6 +183,8 @@
     const $ = sel => document.querySelector(sel);
     const btn = $('#start');
     const mins = $('#mins');
+    const mode = $('#mode');
+    const modeGroup = $('#mode-group');
     const left = $('#left');
     const status = $('#status');
     const repeat = $('#repeat');
@@ -257,16 +268,19 @@
 
       latestElectronState = state;
       mins.value = minutesFromMs(state.settings.thresholdMs);
+      mode.value = state.mode || 'system-active';
 
       const accumulated = minutesFromMs(state.accumulatedMs);
       const remaining = fmt(state.remainingMs);
       const snoozeRemaining = fmt(state.snoozeUntil - Date.now());
       const cooldownRemaining = fmt(state.cooldownUntil - Date.now());
+      const isTypingMode = state.mode === 'typing';
+      const typingGapRemaining = fmt((state.typing?.lastTypingAt || 0) + (state.settings.typingGapMs || 0) - Date.now());
 
       if (state.phase === 'idle') {
-        left.textContent = '设置提醒间隔，点击开始累计';
+        left.textContent = isTypingMode ? '等待键盘活动，检测到打字后开始会话' : '设置提醒间隔，点击开始累计';
         left.style.background = '#f0f0f0';
-        btn.textContent = '开始累计';
+        btn.textContent = isTypingMode ? '开始监测' : '开始累计';
         btn.disabled = false;
         return;
       }
@@ -306,6 +320,12 @@
       if (state.snoozeUntil > Date.now()) {
         left.textContent = `已稍后提醒，剩余 ${snoozeRemaining}`;
         left.style.background = 'rgba(52, 152, 219, 0.2)';
+      } else if (isTypingMode && (!state.typing?.sessionStartAt || !state.typing?.lastTypingAt)) {
+        left.textContent = '持续打字模式已开启，等待键盘活动';
+        left.style.background = 'rgba(52, 152, 219, 0.2)';
+      } else if (isTypingMode) {
+        left.textContent = `打字会话约 ${accumulated} 分钟，超 ${typingGapRemaining} 无输入将重置`;
+        left.style.background = 'rgba(52, 152, 219, 0.3)';
       } else {
         left.textContent = `已累计约 ${accumulated} 分钟，距离提醒 ${remaining}`;
         left.style.background = 'rgba(52, 152, 219, 0.3)';
@@ -520,6 +540,22 @@
         try {
           const repeatGroup = repeat.closest('.form-group');
           if (repeatGroup) repeatGroup.style.display = 'none';
+          modeGroup.style.display = 'block';
+          mode.addEventListener('change', async () => {
+            if (mode.value === 'typing') {
+              const result = await window.electronAPI.requestTypingModeEnable();
+              renderElectronState(result.state);
+              if (result.hookResult && !result.hookResult.ok) {
+                showStatus(`打字模式未就绪：${result.hookResult.error || result.hookResult.status}`, 'error');
+              } else {
+                showStatus('持续打字模式已开启', 'success');
+              }
+              return;
+            }
+
+            renderElectronState(await window.electronAPI.updateReminderSettings({ mode: 'system-active' }));
+            showStatus('已切换为系统活跃模式', 'info');
+          });
           window.electronAPI.subscribeReminderState(renderElectronState);
           renderElectronState(await window.electronAPI.getReminderState());
           showStatus('Electron 桌面应用已就绪', 'success');
