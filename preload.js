@@ -13,6 +13,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   updateReminderSettings: (settings) => ipcRenderer.invoke('update-reminder-settings', settings),
 
+  requestTypingModeEnable: () => ipcRenderer.invoke('request-typing-mode-enable'),
+
   startTracking: () => ipcRenderer.invoke('start-tracking'),
 
   pauseTracking: () => ipcRenderer.invoke('pause-tracking'),
@@ -58,5 +60,4 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.removeAllListeners(channel);
   }
 });
-
 
