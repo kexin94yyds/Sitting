@@ -4,8 +4,11 @@ const { BrowserWindow } = require('electron');
 function createRestWindowService(dispatch) {
   let restWindow = null;
   let isDestroying = false;
+  let latestState = null;
 
   function show(parentWindow, state) {
+    latestState = state;
+
     if (!restWindow || restWindow.isDestroyed()) {
       restWindow = new BrowserWindow({
         width: 420,
@@ -37,14 +40,23 @@ function createRestWindowService(dispatch) {
         }
       });
 
-      restWindow.loadFile(path.join(__dirname, '..', 'rest.html'));
+      restWindow.webContents.on('did-finish-load', () => {
+        sendState(latestState);
+        showNow();
+      });
+
+      restWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
+        console.error('Rest window failed to load:', errorCode, errorDescription);
+      });
+
+      restWindow.loadFile(path.join(__dirname, '..', 'rest.html')).catch((error) => {
+        console.error('Rest window load failed:', error);
+      });
     }
 
     restWindow.once('ready-to-show', () => {
       sendState(state);
-      restWindow.show();
-      restWindow.setAlwaysOnTop(true, 'floating');
-      restWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+      showNow();
     });
 
     if (restWindow.webContents.isLoading()) {
@@ -52,9 +64,7 @@ function createRestWindowService(dispatch) {
     }
 
     sendState(state);
-    restWindow.show();
-    restWindow.setAlwaysOnTop(true, 'floating');
-    restWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+    showNow();
   }
 
   function hide() {
@@ -84,6 +94,14 @@ function createRestWindowService(dispatch) {
     sendState,
     destroy
   };
+
+  function showNow() {
+    if (!restWindow || restWindow.isDestroyed()) return;
+    restWindow.show();
+    restWindow.focus();
+    restWindow.setAlwaysOnTop(true, 'floating');
+    restWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  }
 }
 
 function sanitizeState(state) {
