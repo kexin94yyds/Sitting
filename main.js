@@ -123,6 +123,9 @@ function startRuntime() {
   powerMonitorSource.start();
 
   hydrateRuntimeState();
+  if (state.mode === 'typing') {
+    startTypingHook();
+  }
 
   tickTimer = setInterval(runTick, 1000);
   runTick();
