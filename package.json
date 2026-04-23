@@ -42,8 +42,10 @@
     },
     "files": [
       "main.js",
+      "main/**/*.js",
       "preload.js",
       "index.html",
+      "rest.html",
       "favicon.png",
       "icon.svg",
       "manifest.json"
@@ -77,7 +79,6 @@
   },
   "homepage": "https://github.com/yourusername/sit-reminder#readme"
 }
-
 
 
 
