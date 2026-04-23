@@ -3,6 +3,7 @@ const { BrowserWindow } = require('electron');
 
 function createRestWindowService(dispatch) {
   let restWindow = null;
+  let isDestroying = false;
 
   function show(parentWindow, state) {
     if (!restWindow || restWindow.isDestroyed()) {
@@ -31,7 +32,9 @@ function createRestWindowService(dispatch) {
       });
 
       restWindow.on('close', () => {
-        dispatch({ type: 'SNOOZE' });
+        if (!isDestroying) {
+          dispatch({ type: 'SNOOZE' });
+        }
       });
 
       restWindow.loadFile(path.join(__dirname, '..', 'rest.html'));
@@ -68,8 +71,10 @@ function createRestWindowService(dispatch) {
 
   function destroy() {
     if (restWindow && !restWindow.isDestroyed()) {
+      isDestroying = true;
       restWindow.destroy();
     }
+    isDestroying = false;
     restWindow = null;
   }
 
