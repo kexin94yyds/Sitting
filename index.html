@@ -186,6 +186,7 @@
     let ticker = null;
     let intervalMinutes = 0;
     let audioCtx = null;
+    let latestElectronState = null;
 
     const STORAGE_KEY = 'sit_reminder_state_v1';
     const REPEAT_INTERVAL_MINUTES = 5; // 循环固定 5 分钟
@@ -245,6 +246,73 @@
       const m = Math.floor(s / 60);
       const ss = String(s % 60).padStart(2, '0');
       return `${m}:${ss}`;
+    }
+
+    function minutesFromMs(ms) {
+      return Math.max(1, Math.round((Number(ms) || 0) / 60000));
+    }
+
+    function renderElectronState(state) {
+      if (!state) return;
+
+      latestElectronState = state;
+      mins.value = minutesFromMs(state.settings.thresholdMs);
+
+      const accumulated = minutesFromMs(state.accumulatedMs);
+      const remaining = fmt(state.remainingMs);
+      const snoozeRemaining = fmt(state.snoozeUntil - Date.now());
+      const cooldownRemaining = fmt(state.cooldownUntil - Date.now());
+
+      if (state.phase === 'idle') {
+        left.textContent = '设置提醒间隔，点击开始累计';
+        left.style.background = '#f0f0f0';
+        btn.textContent = '开始累计';
+        btn.disabled = false;
+        return;
+      }
+
+      if (state.phase === 'paused') {
+        left.textContent = `已暂停，已累计约 ${accumulated} 分钟`;
+        left.style.background = 'rgba(255, 255, 255, 0.1)';
+        btn.textContent = '继续累计';
+        btn.disabled = false;
+        return;
+      }
+
+      if (state.phase === 'cooldown') {
+        left.textContent = `休息中，剩余 ${cooldownRemaining}`;
+        left.style.background = 'rgba(46, 204, 113, 0.3)';
+        btn.textContent = '暂停累计';
+        btn.disabled = false;
+        return;
+      }
+
+      if (state.phase === 'notifying') {
+        left.textContent = `已提醒，累计约 ${accumulated} 分钟`;
+        left.style.background = 'rgba(241, 196, 15, 0.3)';
+        btn.textContent = '暂停累计';
+        btn.disabled = false;
+        return;
+      }
+
+      if (state.phase === 'break-window') {
+        left.textContent = `休息窗口已打开，累计约 ${accumulated} 分钟`;
+        left.style.background = 'rgba(231, 76, 60, 0.2)';
+        btn.textContent = '暂停累计';
+        btn.disabled = false;
+        return;
+      }
+
+      if (state.snoozeUntil > Date.now()) {
+        left.textContent = `已稍后提醒，剩余 ${snoozeRemaining}`;
+        left.style.background = 'rgba(52, 152, 219, 0.2)';
+      } else {
+        left.textContent = `已累计约 ${accumulated} 分钟，距离提醒 ${remaining}`;
+        left.style.background = 'rgba(52, 152, 219, 0.3)';
+      }
+
+      btn.textContent = '暂停累计';
+      btn.disabled = false;
     }
 
     function tick() {
@@ -380,16 +448,12 @@
     }
 
     btn.onclick = async () => {
-      // Electron 环境：使用主进程的定时器
+      // Electron 环境：使用主进程统一状态机
       if (isElectron && window.electronAPI) {
-        if (timer) {
-          // 停止当前计时
-          stopTimer();
-          window.electronAPI.stopReminder();
-          left.textContent = '计时已停止';
-          left.style.background = 'rgba(255, 255, 255, 0.1)';
-          btn.textContent = '开始计时';
-          showStatus('计时已停止', 'info');
+        const phase = latestElectronState?.phase || 'idle';
+        if (phase !== 'idle' && phase !== 'paused') {
+          await window.electronAPI.pauseTracking();
+          showStatus('已暂停累计', 'info');
           return;
         }
 
@@ -399,31 +463,9 @@
           return;
         }
 
-        // 更新设置到主进程
-        window.electronAPI.updateSettings({
-          reminderInterval: m,
-          repeatEnabled: repeat.checked
-        });
-
-        // 启动主进程的提醒
-        window.electronAPI.startReminder(m);
-        
-        intervalMinutes = m;
-        until = Date.now() + m * 60 * 1000;
-        left.textContent = '剩余时间：' + fmt(until - Date.now());
-        left.style.background = 'rgba(52, 152, 219, 0.3)';
-        
-        btn.textContent = '停止计时';
-        btn.disabled = false;
-        
-        if (ticker) clearInterval(ticker);
-        ticker = setInterval(tick, 500);
-        
-        if (timer) clearTimeout(timer);
-        timer = setTimeout(() => tick(), m * 60 * 1000 + 120);
-        persistState(true);
-        
-        showStatus(`已设置 ${m} 分钟后提醒`, 'success');
+        await window.electronAPI.updateReminderSettings({ thresholdMinutes: m });
+        await window.electronAPI.startTracking();
+        showStatus(`已开始累计，阈值 ${m} 分钟`, 'success');
         return;
       }
 
@@ -476,55 +518,10 @@
       // Electron 环境：从主进程加载设置
       if (isElectron && window.electronAPI) {
         try {
-          const settings = await window.electronAPI.getSettings();
-          if (settings.reminderInterval) {
-            mins.value = settings.reminderInterval;
-          }
-          if (settings.repeatEnabled !== undefined) {
-            repeat.checked = settings.repeatEnabled;
-          }
-          
-          // 监听主进程的提醒状态变化
-          window.electronAPI.onReminderStarted((interval) => {
-            intervalMinutes = interval;
-            until = Date.now() + intervalMinutes * 60 * 1000;
-            left.textContent = '剩余时间：' + fmt(until - Date.now());
-            left.style.background = 'rgba(52, 152, 219, 0.3)';
-            btn.textContent = '停止计时';
-            btn.disabled = false;
-            
-            if (ticker) clearInterval(ticker);
-            ticker = setInterval(tick, 500);
-            
-            if (timer) clearTimeout(timer);
-            timer = setTimeout(() => tick(), intervalMinutes * 60 * 1000 + 120);
-            persistState(true);
-          });
-          
-          window.electronAPI.onReminderStopped(() => {
-            stopTimer();
-            left.textContent = '计时已停止';
-            left.style.background = 'rgba(255, 255, 255, 0.1)';
-            btn.textContent = '开始计时';
-          });
-          
-          // 如果主进程正在运行，恢复 UI 状态
-          if (settings.isRunning) {
-            const interval = settings.reminderInterval || 45;
-            intervalMinutes = interval;
-            until = Date.now() + interval * 60 * 1000;
-            left.textContent = '剩余时间：' + fmt(until - Date.now());
-            left.style.background = 'rgba(52, 152, 219, 0.3)';
-            btn.textContent = '停止计时';
-            btn.disabled = false;
-            
-            if (ticker) clearInterval(ticker);
-            ticker = setInterval(tick, 500);
-            
-            if (timer) clearTimeout(timer);
-            timer = setTimeout(() => tick(), interval * 60 * 1000 + 120);
-          }
-          
+          const repeatGroup = repeat.closest('.form-group');
+          if (repeatGroup) repeatGroup.style.display = 'none';
+          window.electronAPI.subscribeReminderState(renderElectronState);
+          renderElectronState(await window.electronAPI.getReminderState());
           showStatus('Electron 桌面应用已就绪', 'success');
         } catch (e) {
           console.error('Failed to load Electron settings:', e);
