@@ -161,7 +161,7 @@ function runEffects(previousState, nextState) {
     return;
   }
 
-  if (previousState.phase !== 'break-window' && nextState.phase === 'break-window') {
+  if (nextState.phase === 'break-window') {
     restWindowService.show(mainWindow, nextState);
     return;
   }
