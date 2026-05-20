@@ -29,16 +29,16 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      padding: 18px;
+      padding: 32px;
     }
 
     main {
-      width: min(100%, 360px);
+      width: min(100%, 560px);
     }
 
     h1 {
-      margin: 0 0 8px;
-      font-size: 24px;
+      margin: 0 0 10px;
+      font-size: 34px;
       line-height: 1.2;
       letter-spacing: 0;
     }
@@ -47,12 +47,12 @@
       margin: 0;
       color: var(--muted);
       line-height: 1.5;
-      font-size: 14px;
+      font-size: 16px;
     }
 
     .summary {
-      margin: 18px 0;
-      padding: 14px;
+      margin: 28px 0;
+      padding: 22px;
       border: 1px solid var(--line);
       border-radius: 8px;
       background: var(--surface);
@@ -60,19 +60,20 @@
 
     .summary strong {
       display: block;
-      margin-bottom: 4px;
-      font-size: 20px;
+      margin-bottom: 6px;
+      font-size: 28px;
       font-weight: 700;
     }
 
     .actions {
       display: grid;
       gap: 10px;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
     button {
       width: 100%;
-      min-height: 42px;
+      min-height: 48px;
       border: 1px solid var(--line);
       border-radius: 8px;
       background: var(--surface);
@@ -87,6 +88,7 @@
     }
 
     button.primary {
+      grid-column: 1 / -1;
       border-color: var(--primary);
       background: var(--primary);
       color: #ffffff;
