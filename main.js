@@ -168,12 +168,16 @@ function runEffects(previousState, nextState) {
   }
 
   if (nextState.phase === 'notifying' && nextState.lastNotificationAt === 0) {
-    notificationService.showBreakNotification(nextState);
+    if (restWindowService.show(mainWindow, nextState) === false) {
+      notificationService.showBreakNotification(nextState);
+    }
     return;
   }
 
-  if (nextState.phase === 'break-window') {
-    restWindowService.show(mainWindow, nextState);
+  if (nextState.phase === 'break-window' && previousState.phase !== 'break-window') {
+    if (restWindowService.show(mainWindow, nextState) === false) {
+      notificationService.showBreakNotification(nextState);
+    }
     return;
   }
 

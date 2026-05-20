@@ -241,7 +241,7 @@ function tick(state, event, now) {
   if (!inSnooze && accumulatedMs >= state.settings.thresholdMs) {
     return {
       ...state,
-      phase: 'notifying',
+      phase: 'break-window',
       accumulatedMs,
       lastTickAt: now,
       lastNotificationAt: 0
