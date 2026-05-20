@@ -1,5 +1,5 @@
 const path = require('path');
-const { BrowserWindow } = require('electron');
+const { app, BrowserWindow, screen } = require('electron');
 
 function createRestWindowService(dispatch) {
   let restWindow = null;
@@ -9,18 +9,22 @@ function createRestWindowService(dispatch) {
   function show(parentWindow, state) {
     latestState = state;
 
-    if (!restWindow || restWindow.isDestroyed()) {
+    try {
+      if (!restWindow || restWindow.isDestroyed()) {
+        const bounds = getRestWindowBounds();
       restWindow = new BrowserWindow({
-        width: 420,
-        height: 300,
+        width: bounds.width,
+        height: bounds.height,
+        x: bounds.x,
+        y: bounds.y,
         resizable: false,
         fullscreenable: false,
         minimizable: false,
         maximizable: false,
+        focusable: true,
         alwaysOnTop: true,
         skipTaskbar: true,
         show: false,
-        parent: parentWindow || undefined,
         webPreferences: {
           nodeIntegration: false,
           contextIsolation: true,
@@ -60,11 +64,16 @@ function createRestWindowService(dispatch) {
     }
 
     if (restWindow.webContents.isLoading()) {
-      return;
+      return true;
     }
 
     sendState(state);
     showNow();
+    return true;
+    } catch (error) {
+      console.error('Rest window show failed:', error);
+      return false;
+    }
   }
 
   function hide() {
@@ -97,11 +106,37 @@ function createRestWindowService(dispatch) {
 
   function showNow() {
     if (!restWindow || restWindow.isDestroyed()) return;
-    restWindow.show();
-    restWindow.focus();
-    restWindow.setAlwaysOnTop(true, 'floating');
     restWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+    restWindow.setAlwaysOnTop(true, 'screen-saver');
+    if (restWindow.isMinimized()) {
+      restWindow.restore();
+    }
+    restWindow.center();
+    restWindow.show();
+    app.focus({ steal: true });
+    restWindow.moveTop();
+    restWindow.focus();
+    restWindow.flashFrame(true);
+    setTimeout(() => {
+      if (restWindow && !restWindow.isDestroyed()) {
+        restWindow.flashFrame(false);
+      }
+    }, 2500);
   }
+}
+
+function getRestWindowBounds() {
+  const display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
+  const { x, y, width, height } = display.workArea;
+  const windowWidth = Math.min(720, Math.max(560, Math.round(width * 0.48)));
+  const windowHeight = Math.min(560, Math.max(420, Math.round(height * 0.62)));
+
+  return {
+    width: windowWidth,
+    height: windowHeight,
+    x: Math.round(x + (width - windowWidth) / 2),
+    y: Math.round(y + (height - windowHeight) / 2)
+  };
 }
 
 function sanitizeState(state) {
