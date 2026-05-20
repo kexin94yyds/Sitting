@@ -1,30 +1,27 @@
 const { app, BrowserWindow, Tray, Menu, ipcMain, nativeImage, powerMonitor } = require('electron');
 const path = require('path');
 const Store = require('electron-store');
-const { createInitialState, normalizeSettings, reduce } = require('./main/reminderState');
-const { createPowerMonitorSource } = require('./main/activitySources/powerMonitorSource');
-const { createUiohookSource } = require('./main/activitySources/uiohookSource');
+const { createInitialState, normalizeSettings, reduce, deriveState, MS_PER_MINUTE } = require('./main/reminderState');
 const { createNotificationService } = require('./main/notificationService');
 const { createRestWindowService } = require('./main/restWindow');
-const { getAccessibilityStatus, requestAccessibilityPermission } = require('./main/permissionService');
 
 const store = new Store();
-const SETTINGS_KEY = 'reminderSettingsV2';
-const RUNTIME_KEY = 'reminderRuntimeV2';
+const SETTINGS_KEY = 'standingGoalSettingsV1';
+const RUNTIME_KEY = 'standingGoalRuntimeV1';
 
 let mainWindow = null;
 let tray = null;
 let state = createInitialState(loadSettings());
-let powerMonitorSource = null;
 let notificationService = null;
 let restWindowService = null;
-let typingHookSource = null;
 let tickTimer = null;
 
 function createWindow() {
   mainWindow = new BrowserWindow({
-    width: 600,
-    height: 700,
+    width: 720,
+    height: 760,
+    minWidth: 620,
+    minHeight: 680,
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -37,6 +34,10 @@ function createWindow() {
 
   mainWindow.loadFile('index.html');
 
+  mainWindow.once('ready-to-show', () => {
+    showWindow();
+  });
+
   mainWindow.on('close', (event) => {
     if (!app.isQuitting) {
       event.preventDefault();
@@ -45,7 +46,6 @@ function createWindow() {
   });
 
   mainWindow.on('show', () => {
-    mainWindow.focus();
     sendStateToWindow(mainWindow);
   });
 
@@ -74,27 +74,31 @@ function createTray() {
 function updateTrayMenu() {
   if (!tray) return;
 
-  const isTracking = state.phase !== 'idle' && state.phase !== 'paused';
+  const publicState = getPublicState();
+  const isRunning = publicState.phase === 'work' || publicState.phase === 'prompt' || publicState.phase === 'resting';
   const contextMenu = Menu.buildFromTemplate([
     {
-      label: isTracking ? '暂停提醒' : '开始提醒',
-      click: () => {
-        dispatch({ type: isTracking ? 'PAUSE_TRACKING' : 'START_TRACKING' });
-      }
+      label: isRunning ? '暂停提醒' : '开始提醒',
+      click: () => dispatch({ type: isRunning ? 'PAUSE' : 'START' })
     },
     {
-      label: '设置',
+      label: '显示设置',
       click: () => showWindow()
     },
     {
       label: '开始休息',
-      enabled: isTracking,
-      click: () => dispatch({ type: 'START_BREAK' })
+      enabled: publicState.phase === 'prompt',
+      click: () => dispatch({ type: 'START_REST' })
     },
     {
-      label: '稍后 5 分钟',
-      enabled: isTracking,
+      label: '稍后提醒',
+      enabled: publicState.phase === 'prompt' || publicState.phase === 'resting',
       click: () => dispatch({ type: 'SNOOZE' })
+    },
+    {
+      label: '跳过本次',
+      enabled: publicState.phase === 'prompt' || publicState.phase === 'resting',
+      click: () => dispatch({ type: 'SKIP_ONCE' })
     },
     { type: 'separator' },
     {
@@ -110,22 +114,20 @@ function updateTrayMenu() {
 }
 
 function showWindow() {
-  if (mainWindow) {
-    mainWindow.show();
-    mainWindow.focus();
+  if (!mainWindow) return;
+  if (mainWindow.isMinimized()) {
+    mainWindow.restore();
   }
+  mainWindow.show();
+  app.focus({ steal: true });
+  mainWindow.moveTop();
+  mainWindow.focus();
 }
 
 function startRuntime() {
   notificationService = createNotificationService(dispatch);
   restWindowService = createRestWindowService(dispatch);
-  powerMonitorSource = createPowerMonitorSource(powerMonitor, dispatch, () => state.settings);
-  powerMonitorSource.start();
-
   hydrateRuntimeState();
-  if (state.mode === 'typing') {
-    startTypingHook();
-  }
 
   tickTimer = setInterval(runTick, 1000);
   runTick();
@@ -136,15 +138,11 @@ function stopRuntime() {
     clearInterval(tickTimer);
     tickTimer = null;
   }
-  stopTypingHook();
-  powerMonitorSource?.stop();
   restWindowService?.destroy();
 }
 
 function runTick() {
-  const snapshot = powerMonitorSource.getSnapshot();
-  dispatch({ type: 'ACTIVITY_SNAPSHOT', ...snapshot });
-  dispatch({ type: 'TICK', systemActive: snapshot.systemActive });
+  dispatch({ type: 'TICK', idleSec: powerMonitor.getSystemIdleTime() });
 }
 
 function dispatch(event) {
@@ -153,7 +151,7 @@ function dispatch(event) {
 
   persistState();
   try {
-    runEffects(previousState, state, event);
+    runEffects(deriveState(previousState), getPublicState(), event);
   } catch (error) {
     console.error('Reminder side effect failed:', error);
   } finally {
@@ -163,27 +161,24 @@ function dispatch(event) {
 }
 
 function runEffects(previousState, nextState) {
-  if (previousState.mode === 'typing' && nextState.mode !== 'typing') {
-    stopTypingHook();
-  }
+  const wasRestVisible = isRestVisiblePhase(previousState.phase);
+  const isRestVisible = isRestVisiblePhase(nextState.phase);
 
-  if (nextState.phase === 'notifying' && nextState.lastNotificationAt === 0) {
-    if (restWindowService.show(mainWindow, nextState) === false) {
+  if (isRestVisible) {
+    const didShow = restWindowService.show(mainWindow, nextState);
+    if (didShow === false && nextState.phase === 'prompt') {
       notificationService.showBreakNotification(nextState);
     }
     return;
   }
 
-  if (nextState.phase === 'break-window' && previousState.phase !== 'break-window') {
-    if (restWindowService.show(mainWindow, nextState) === false) {
-      notificationService.showBreakNotification(nextState);
-    }
-    return;
-  }
-
-  if (previousState.phase === 'break-window' && nextState.phase !== 'break-window') {
+  if (wasRestVisible && !isRestVisible) {
     restWindowService.hide();
   }
+}
+
+function isRestVisiblePhase(phase) {
+  return phase === 'prompt' || phase === 'resting';
 }
 
 function broadcastState() {
@@ -193,14 +188,6 @@ function broadcastState() {
       window.webContents.send('reminder-state', payload);
     }
   });
-
-  if (state.phase === 'tracking') {
-    mainWindow?.webContents.send('reminder-started', getThresholdMinutes());
-  }
-
-  if (state.phase === 'idle' || state.phase === 'paused') {
-    mainWindow?.webContents.send('reminder-stopped');
-  }
 }
 
 function sendStateToWindow(window) {
@@ -209,10 +196,7 @@ function sendStateToWindow(window) {
 }
 
 function getPublicState() {
-  return {
-    ...state,
-    remainingMs: Math.max(0, state.settings.thresholdMs - state.accumulatedMs)
-  };
+  return deriveState(state);
 }
 
 function loadSettings() {
@@ -222,189 +206,143 @@ function loadSettings() {
   }
 
   return normalizeSettings({
-    thresholdMs: store.get('reminderInterval', 45) * 60 * 1000,
-    breakMs: store.get('breakMinutes', 5) * 60 * 1000,
-    snoozeMs: 5 * 60 * 1000
+    intervalMs: store.get('reminderInterval', 45) * MS_PER_MINUTE,
+    restBlockMs: store.get('breakMinutes', 5) * MS_PER_MINUTE,
+    dailyGoalMs: 30 * MS_PER_MINUTE,
+    snoozeMs: 5 * MS_PER_MINUTE,
+    idleConfirmSec: 15
   });
 }
 
 function hydrateRuntimeState() {
   const saved = store.get(RUNTIME_KEY);
   if (saved) {
-    dispatch({
-      type: 'HYDRATE',
-      state: {
-        ...saved,
-        lastTickAt: Date.now(),
-        flags: {
-          locked: false,
-          suspended: false,
-          systemActive: false
-        }
-      }
-    });
+    dispatch({ type: 'HYDRATE', state: saved });
     return;
   }
 
   if (store.get('isRunning', false)) {
-    dispatch({ type: 'START_TRACKING' });
+    dispatch({ type: 'START' });
   }
 }
 
 function persistState() {
-  store.set(SETTINGS_KEY, { ...state.settings, mode: state.mode });
-  store.set('reminderInterval', getThresholdMinutes());
-  store.set('isRunning', state.phase !== 'idle' && state.phase !== 'paused');
+  const publicState = getPublicState();
+  store.set(SETTINGS_KEY, publicState.settings);
+  store.set('reminderInterval', minutesFromMs(publicState.settings.intervalMs));
+  store.set('breakMinutes', minutesFromMs(publicState.settings.restBlockMs));
+  store.set('isRunning', publicState.phase === 'work' || publicState.phase === 'prompt' || publicState.phase === 'resting');
   store.set(RUNTIME_KEY, {
-    phase: state.phase,
-    mode: state.mode,
-    accumulatedMs: state.accumulatedMs,
-    lastTickAt: Date.now(),
-    snoozeUntil: state.snoozeUntil,
-    cooldownUntil: state.cooldownUntil,
-    lastNotificationAt: state.lastNotificationAt,
-    typing: state.typing,
-    settings: state.settings
+    phase: publicState.phase,
+    settings: publicState.settings,
+    todayKey: publicState.todayKey,
+    todayRestMs: publicState.todayRestMs,
+    workStartedAt: publicState.workStartedAt,
+    nextReminderAt: publicState.nextReminderAt,
+    pausedAt: publicState.pausedAt,
+    rest: publicState.rest
   });
-}
-
-function getThresholdMinutes() {
-  return Math.max(1, Math.round(state.settings.thresholdMs / 60000));
 }
 
 function toSettingsPatch(settings = {}) {
   const patch = {};
+  if (settings.intervalMinutes !== undefined) {
+    patch.intervalMs = Number(settings.intervalMinutes) * MS_PER_MINUTE;
+  }
   if (settings.reminderInterval !== undefined) {
-    patch.thresholdMs = Number(settings.reminderInterval) * 60 * 1000;
+    patch.intervalMs = Number(settings.reminderInterval) * MS_PER_MINUTE;
   }
   if (settings.thresholdMinutes !== undefined) {
-    patch.thresholdMs = Number(settings.thresholdMinutes) * 60 * 1000;
+    patch.intervalMs = Number(settings.thresholdMinutes) * MS_PER_MINUTE;
   }
-  if (settings.thresholdMs !== undefined) {
-    patch.thresholdMs = Number(settings.thresholdMs);
+  if (settings.intervalMs !== undefined) {
+    patch.intervalMs = Number(settings.intervalMs);
+  }
+  if (settings.restBlockMinutes !== undefined) {
+    patch.restBlockMs = Number(settings.restBlockMinutes) * MS_PER_MINUTE;
   }
   if (settings.breakMinutes !== undefined) {
-    patch.breakMs = Number(settings.breakMinutes) * 60 * 1000;
+    patch.restBlockMs = Number(settings.breakMinutes) * MS_PER_MINUTE;
   }
-  if (settings.breakMs !== undefined) {
-    patch.breakMs = Number(settings.breakMs);
+  if (settings.restBlockMs !== undefined) {
+    patch.restBlockMs = Number(settings.restBlockMs);
+  }
+  if (settings.dailyGoalMinutes !== undefined) {
+    patch.dailyGoalMs = Number(settings.dailyGoalMinutes) * MS_PER_MINUTE;
+  }
+  if (settings.dailyGoalMs !== undefined) {
+    patch.dailyGoalMs = Number(settings.dailyGoalMs);
   }
   if (settings.snoozeMinutes !== undefined) {
-    patch.snoozeMs = Number(settings.snoozeMinutes) * 60 * 1000;
+    patch.snoozeMs = Number(settings.snoozeMinutes) * MS_PER_MINUTE;
   }
   if (settings.snoozeMs !== undefined) {
     patch.snoozeMs = Number(settings.snoozeMs);
   }
-  if (settings.idleThresholdSec !== undefined) {
-    patch.idleThresholdSec = Number(settings.idleThresholdSec);
-  }
-  if (settings.notificationGraceMs !== undefined) {
-    patch.notificationGraceMs = Number(settings.notificationGraceMs);
-  }
-  if (settings.typingGapMinutes !== undefined) {
-    patch.typingGapMs = Number(settings.typingGapMinutes) * 60 * 1000;
-  }
-  if (settings.typingGapMs !== undefined) {
-    patch.typingGapMs = Number(settings.typingGapMs);
-  }
-  if (settings.mode === 'typing' || settings.mode === 'system-active') {
-    patch.mode = settings.mode;
+  if (settings.idleConfirmSec !== undefined) {
+    patch.idleConfirmSec = Number(settings.idleConfirmSec);
   }
   return patch;
 }
 
-function startTypingHook() {
-  if (state.mode !== 'typing') {
-    return { ok: false, status: 'disabled', error: 'typing mode is not active' };
-  }
-
-  const permissionStatus = getAccessibilityStatus();
-  dispatch({ type: 'PERMISSION_STATUS', status: permissionStatus });
-
-  if (process.platform === 'darwin' && permissionStatus !== 'authorized') {
-    dispatch({ type: 'HOOK_STATUS', status: 'permission-blocked', error: 'Accessibility permission is required' });
-    return { ok: false, status: 'permission-blocked', error: 'Accessibility permission is required' };
-  }
-
-  if (!typingHookSource) {
-    typingHookSource = createUiohookSource((eventTime) => {
-      dispatch({ type: 'KEY_ACTIVITY' }, eventTime);
-    });
-  }
-
-  const result = typingHookSource.start();
-  dispatch({ type: 'HOOK_STATUS', status: result.status, error: result.error });
-  return result;
-}
-
-function stopTypingHook() {
-  if (!typingHookSource) {
-    dispatch({ type: 'HOOK_STATUS', status: 'disabled' });
-    return;
-  }
-
-  const result = typingHookSource.stop();
-  dispatch({ type: 'HOOK_STATUS', status: result.status, error: result.error });
-}
-
-function enableTypingMode(promptForPermission) {
-  const permissionStatus = promptForPermission ? requestAccessibilityPermission() : getAccessibilityStatus();
-  dispatch({ type: 'PERMISSION_STATUS', status: permissionStatus });
-  dispatch({ type: 'UPDATE_SETTINGS', settings: { mode: 'typing' } });
-  const hookResult = startTypingHook();
-  return {
-    state: getPublicState(),
-    hookResult
-  };
+function minutesFromMs(ms) {
+  return Math.max(1, Math.round((Number(ms) || 0) / MS_PER_MINUTE));
 }
 
 function registerIpc() {
-  ipcMain.handle('get-settings', () => ({
-    reminderInterval: getThresholdMinutes(),
-    isRunning: state.phase !== 'idle' && state.phase !== 'paused',
-    repeatEnabled: false,
-    state: getPublicState()
-  }));
+  ipcMain.handle('get-settings', () => {
+    const publicState = getPublicState();
+    return {
+      intervalMinutes: minutesFromMs(publicState.settings.intervalMs),
+      restBlockMinutes: minutesFromMs(publicState.settings.restBlockMs),
+      dailyGoalMinutes: minutesFromMs(publicState.settings.dailyGoalMs),
+      snoozeMinutes: minutesFromMs(publicState.settings.snoozeMs),
+      idleConfirmSec: publicState.settings.idleConfirmSec,
+      isRunning: publicState.phase === 'work' || publicState.phase === 'prompt' || publicState.phase === 'resting',
+      state: publicState
+    };
+  });
 
   ipcMain.handle('get-reminder-state', () => getPublicState());
 
   ipcMain.handle('update-reminder-settings', (event, settings) => {
     dispatch({ type: 'UPDATE_SETTINGS', settings: toSettingsPatch(settings) });
-    if (settings?.mode === 'typing') {
-      return enableTypingMode(false).state;
-    }
-    if (settings?.mode === 'system-active') {
-      stopTypingHook();
-    }
     return getPublicState();
   });
 
   ipcMain.handle('request-typing-mode-enable', () => {
-    return enableTypingMode(true);
+    return {
+      state: getPublicState(),
+      hookResult: {
+        ok: false,
+        status: 'removed',
+        error: '新版久坐提醒不再使用持续打字检测'
+      }
+    };
   });
 
   ipcMain.handle('start-tracking', () => {
-    dispatch({ type: 'START_TRACKING' });
+    dispatch({ type: 'START' });
     return getPublicState();
   });
 
   ipcMain.handle('pause-tracking', () => {
-    dispatch({ type: 'PAUSE_TRACKING' });
+    dispatch({ type: 'PAUSE' });
     return getPublicState();
   });
 
   ipcMain.handle('stop-tracking', () => {
-    dispatch({ type: 'STOP_TRACKING' });
+    dispatch({ type: 'STOP' });
     return getPublicState();
   });
 
   ipcMain.handle('start-break', () => {
-    dispatch({ type: 'START_BREAK' });
+    dispatch({ type: 'START_REST', idleSec: powerMonitor.getSystemIdleTime() });
     return getPublicState();
   });
 
   ipcMain.handle('snooze', (event, minutes) => {
-    const ms = Number(minutes) > 0 ? Number(minutes) * 60 * 1000 : state.settings.snoozeMs;
+    const ms = Number(minutes) > 0 ? Number(minutes) * MS_PER_MINUTE : state.settings.snoozeMs;
     dispatch({ type: 'SNOOZE', ms });
     return getPublicState();
   });
@@ -414,13 +352,18 @@ function registerIpc() {
     return getPublicState();
   });
 
+  ipcMain.handle('reset-today', () => {
+    dispatch({ type: 'RESET_TODAY' });
+    return getPublicState();
+  });
+
   ipcMain.on('start-reminder', (event, intervalMinutes) => {
-    dispatch({ type: 'UPDATE_SETTINGS', settings: toSettingsPatch({ reminderInterval: intervalMinutes }) });
-    dispatch({ type: 'START_TRACKING' });
+    dispatch({ type: 'UPDATE_SETTINGS', settings: toSettingsPatch({ intervalMinutes }) });
+    dispatch({ type: 'START' });
   });
 
   ipcMain.on('stop-reminder', () => {
-    dispatch({ type: 'PAUSE_TRACKING' });
+    dispatch({ type: 'PAUSE' });
   });
 
   ipcMain.on('update-settings', (event, settings) => {

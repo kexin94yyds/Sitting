@@ -3,17 +3,19 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>该休息一下了</title>
+  <title>站起来休息</title>
   <style>
     :root {
       color-scheme: light;
-      --bg: #f8faf7;
-      --ink: #18211b;
-      --muted: #5d6a62;
-      --line: #cbd7ce;
-      --primary: #136f63;
-      --primary-hover: #0d5a50;
+      --bg: #f6f8f5;
       --surface: #ffffff;
+      --ink: #162019;
+      --muted: #5f6e64;
+      --line: #ccd8d0;
+      --primary: #176f5d;
+      --primary-hover: #105849;
+      --warning: #a15c07;
+      --track: #e5ebe6;
     }
 
     * {
@@ -29,11 +31,11 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      padding: 32px;
+      padding: 30px;
     }
 
     main {
-      width: min(100%, 560px);
+      width: min(100%, 620px);
     }
 
     h1 {
@@ -47,39 +49,77 @@
       margin: 0;
       color: var(--muted);
       line-height: 1.5;
-      font-size: 16px;
     }
 
-    .summary {
-      margin: 28px 0;
-      padding: 22px;
+    .panel {
+      margin: 24px 0;
+      padding: 20px;
       border: 1px solid var(--line);
       border-radius: 8px;
       background: var(--surface);
     }
 
-    .summary strong {
+    .metric {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      align-items: baseline;
+      margin-bottom: 12px;
+    }
+
+    .metric span {
+      color: var(--muted);
+      font-size: 14px;
+      font-weight: 700;
+    }
+
+    .metric strong {
+      font-size: 26px;
+    }
+
+    .bar {
+      height: 12px;
+      border-radius: 999px;
+      background: var(--track);
+      overflow: hidden;
+    }
+
+    .bar span {
       display: block;
-      margin-bottom: 6px;
-      font-size: 28px;
+      height: 100%;
+      width: 0%;
+      background: var(--primary);
+      transition: width 180ms ease;
+    }
+
+    .message {
+      margin-top: 14px;
+      padding-top: 14px;
+      border-top: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 15px;
+    }
+
+    .message.warning {
+      color: var(--warning);
       font-weight: 700;
     }
 
     .actions {
       display: grid;
+      grid-template-columns: 1.4fr 1fr 1fr;
       gap: 10px;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
     button {
-      width: 100%;
       min-height: 48px;
       border: 1px solid var(--line);
       border-radius: 8px;
       background: var(--surface);
       color: var(--ink);
+      font: inherit;
       font-size: 15px;
-      font-weight: 600;
+      font-weight: 760;
       cursor: pointer;
     }
 
@@ -88,58 +128,138 @@
     }
 
     button.primary {
-      grid-column: 1 / -1;
       border-color: var(--primary);
       background: var(--primary);
-      color: #ffffff;
+      color: #fff;
     }
 
     button.primary:hover {
       background: var(--primary-hover);
     }
+
+    button:disabled {
+      cursor: not-allowed;
+      opacity: 0.55;
+    }
+
+    @media (max-width: 560px) {
+      .metric,
+      .actions {
+        display: grid;
+        grid-template-columns: 1fr;
+      }
+    }
   </style>
 </head>
 <body>
   <main>
-    <h1>该休息一下了</h1>
-    <p>站起来活动一下，喝口水，让眼睛离开屏幕一会儿。</p>
+    <h1 id="title">站起来休息</h1>
+    <p id="subtitle">离开键盘和鼠标，完成本次有效休息后才会计入今日目标。</p>
 
-    <section class="summary" aria-live="polite">
-      <strong id="active-minutes">已活跃 0 分钟</strong>
-      <p id="break-minutes">建议休息 5 分钟</p>
+    <section class="panel">
+      <div class="metric">
+        <span>本次有效休息</span>
+        <strong id="rest-value">0:00</strong>
+      </div>
+      <div class="bar" aria-hidden="true"><span id="rest-bar"></span></div>
+      <div class="message" id="rest-message">点击开始休息后离开电脑。</div>
+    </section>
+
+    <section class="panel">
+      <div class="metric">
+        <span>今日目标</span>
+        <strong id="daily-value">0 / 30 分钟</strong>
+      </div>
+      <div class="bar" aria-hidden="true"><span id="daily-bar"></span></div>
     </section>
 
     <div class="actions">
       <button class="primary" id="start-break">开始休息</button>
-      <button id="snooze">稍后 5 分钟</button>
+      <button id="snooze">稍后提醒</button>
       <button id="skip">跳过本次</button>
     </div>
   </main>
 
   <script>
-    const activeMinutes = document.querySelector('#active-minutes');
-    const breakMinutes = document.querySelector('#break-minutes');
-    const startBreak = document.querySelector('#start-break');
-    const snooze = document.querySelector('#snooze');
-    const skip = document.querySelector('#skip');
+    const els = {
+      title: document.querySelector('#title'),
+      subtitle: document.querySelector('#subtitle'),
+      restValue: document.querySelector('#rest-value'),
+      restBar: document.querySelector('#rest-bar'),
+      restMessage: document.querySelector('#rest-message'),
+      dailyValue: document.querySelector('#daily-value'),
+      dailyBar: document.querySelector('#daily-bar'),
+      startBreak: document.querySelector('#start-break'),
+      snooze: document.querySelector('#snooze'),
+      skip: document.querySelector('#skip')
+    };
+
+    function minutes(ms) {
+      return Math.max(0, Math.round((Number(ms) || 0) / 60000));
+    }
+
+    function clock(ms) {
+      const total = Math.max(0, Math.round((Number(ms) || 0) / 1000));
+      const m = Math.floor(total / 60);
+      const s = String(total % 60).padStart(2, '0');
+      return `${m}:${s}`;
+    }
 
     function render(state) {
       if (!state) return;
-      activeMinutes.textContent = `已活跃 ${formatMinutes(state.accumulatedMs)} 分钟`;
-      breakMinutes.textContent = `建议休息 ${formatMinutes(state.settings.breakMs)} 分钟`;
-      snooze.textContent = `稍后 ${formatMinutes(state.settings.snoozeMs)} 分钟`;
-    }
 
-    function formatMinutes(ms) {
-      return Math.max(1, Math.round((Number(ms) || 0) / 60000));
+      const restProgress = state.settings.restBlockMs > 0
+        ? Math.min(1, state.rest.currentValidMs / state.settings.restBlockMs)
+        : 0;
+
+      els.dailyValue.textContent = `${minutes(state.todayRestMs)} / ${minutes(state.settings.dailyGoalMs)} 分钟`;
+      els.dailyBar.style.width = `${Math.round((state.dailyProgress || 0) * 100)}%`;
+      els.restValue.textContent = `${clock(state.rest.currentValidMs)} / ${clock(state.settings.restBlockMs)}`;
+      els.restBar.style.width = `${Math.round(restProgress * 100)}%`;
+      els.snooze.textContent = `稍后 ${minutes(state.settings.snoozeMs)} 分钟`;
+
+      if (state.phase === 'prompt') {
+        els.title.textContent = '该站起来休息了';
+        els.subtitle.textContent = `你已工作 ${minutes(state.workElapsedMs)} 分钟，本次需要完成 ${minutes(state.settings.restBlockMs)} 分钟有效休息。`;
+        els.restMessage.textContent = '点击开始休息，然后离开电脑。';
+        els.restMessage.className = 'message';
+        els.startBreak.textContent = '开始休息';
+        els.startBreak.disabled = false;
+        return;
+      }
+
+      if (state.phase === 'resting') {
+        els.title.textContent = '休息计时中';
+        els.subtitle.textContent = '键盘或鼠标活动会让本次休息计时重置。';
+        els.startBreak.textContent = '正在休息';
+        els.startBreak.disabled = true;
+
+        if (!state.idleEnough) {
+          els.restMessage.textContent = `检测到电脑活动。离开电脑 ${state.settings.idleConfirmSec} 秒后重新开始累计。`;
+          els.restMessage.className = 'message warning';
+        } else {
+          els.restMessage.textContent = `有效休息中，还差 ${clock(state.restRemainingMs)}。`;
+          els.restMessage.className = 'message';
+        }
+        return;
+      }
+
+      if (state.phase === 'completed') {
+        els.title.textContent = '今日目标已完成';
+        els.subtitle.textContent = '今天的有效休息目标已经达成。';
+        els.restMessage.textContent = '可以回到工作，明天会重新计算目标。';
+        els.restMessage.className = 'message';
+        els.startBreak.textContent = '已完成';
+        els.startBreak.disabled = true;
+      }
     }
 
     if (window.electronAPI) {
       window.electronAPI.getReminderState().then(render).catch(() => {});
       window.electronAPI.subscribeReminderState(render);
-      startBreak.addEventListener('click', () => window.electronAPI.startBreak());
-      snooze.addEventListener('click', () => window.electronAPI.snooze());
-      skip.addEventListener('click', () => window.electronAPI.skipOnce());
+      els.startBreak.addEventListener('click', () => window.electronAPI.startBreak());
+      els.snooze.addEventListener('click', () => window.electronAPI.snooze());
+      els.skip.addEventListener('click', () => window.electronAPI.skipOnce());
     }
   </script>
 </body>

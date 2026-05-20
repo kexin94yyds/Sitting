@@ -1,635 +1,423 @@
 <!doctype html>
 <html lang="zh">
 <head>
-  <meta charset="utf-8" />
+  <meta charset="utf-8">
   <title>久坐提醒</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <link rel="icon" type="image/png" href="/favicon.png">
-  <link rel="manifest" href="/manifest.json">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <style>
-    body { 
-      font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; 
-      max-width: 520px; 
-      margin: 40px auto; 
-      padding: 0 16px; 
-      background: linear-gradient(135deg, #000000 0%, #ffffff 50%, #000000 100%);
+    :root {
+      color-scheme: light;
+      --bg: #f4f6f3;
+      --surface: #ffffff;
+      --ink: #17201a;
+      --muted: #617066;
+      --line: #cfd8d1;
+      --primary: #176f5d;
+      --primary-hover: #105849;
+      --danger: #b42318;
+      --warning: #a15c07;
+      --track: #e5ebe6;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
       min-height: 100vh;
-      color: #333;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--ink);
     }
-    
-    .container {
-      background: rgba(255, 255, 255, 0.9);
-      backdrop-filter: blur(10px);
-      border-radius: 20px;
-      padding: 30px;
-      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
-      border: 2px solid #000;
+
+    main {
+      width: min(100%, 680px);
+      margin: 0 auto;
+      padding: 28px;
     }
-    
-    h1 {
-      text-align: center;
-      margin-bottom: 30px;
-      font-size: 2.5em;
-      font-weight: 300;
-      color: #000;
-      text-shadow: 2px 2px 4px rgba(255, 255, 255, 0.5);
-    }
-    
-    .form-group {
-      margin-bottom: 20px;
-    }
-    
-    label {
-      display: block;
-      margin-bottom: 8px;
-      font-size: 16px;
-      font-weight: 500;
-      color: #000;
-    }
-    
-    input[type="number"],
-    select {
-      width: 100%;
-      padding: 12px 16px;
-      border: 2px solid #000;
-      border-radius: 10px;
-      font-size: 16px;
-      background: #fff;
-      color: #000;
-    }
-    
-    input[type="number"]::placeholder {
-      color: #666;
-    }
-    
-    input[type="number"]:focus,
-    select:focus {
-      outline: none;
-      background: #f0f0f0;
-      border-color: #333;
-    }
-    
-    button {
-      width: 100%;
-      padding: 15px;
-      border: 2px solid #000;
-      border-radius: 10px;
-      font-size: 18px;
-      font-weight: 600;
-      background: #000;
-      color: #fff;
-      cursor: pointer;
-      transition: all 0.3s ease;
-      margin-bottom: 20px;
-    }
-    
-    button:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 5px 15px rgba(0, 0, 0, 0.5);
-      background: #333;
-    }
-    
-    button:active {
-      transform: translateY(0);
-    }
-    
-    button:disabled {
-      background: #666;
-      cursor: not-allowed;
-      transform: none;
-    }
-    
-    #left {
-      margin-top: 20px;
-      padding: 20px;
-      background: #f0f0f0;
-      border: 2px solid #000;
-      border-radius: 10px;
-      text-align: center;
-      font-size: 18px;
-      font-weight: 500;
-      min-height: 60px;
+
+    header {
       display: flex;
-      align-items: center;
-      justify-content: center;
-      color: #000;
+      justify-content: space-between;
+      gap: 18px;
+      align-items: flex-start;
+      margin-bottom: 22px;
     }
-    
-    .status {
-      margin-top: 15px;
-      padding: 10px;
-      border-radius: 8px;
+
+    h1 {
+      margin: 0 0 8px;
+      font-size: 30px;
+      line-height: 1.2;
+      letter-spacing: 0;
+    }
+
+    p {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+
+    .phase {
+      min-width: 112px;
+      padding: 7px 10px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: var(--surface);
+      color: var(--muted);
       text-align: center;
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    section {
+      margin-bottom: 16px;
+      padding: 18px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--surface);
+    }
+
+    .progress-head,
+    .row {
+      display: flex;
+      justify-content: space-between;
+      gap: 14px;
+      align-items: center;
+    }
+
+    .progress-title {
       font-size: 14px;
+      color: var(--muted);
+      font-weight: 700;
     }
-    
-    .status.success {
-      background: rgba(46, 204, 113, 0.2);
-      color: #2ecc71;
+
+    .progress-value {
+      font-size: 24px;
+      font-weight: 760;
     }
-    
-    .status.error {
-      background: rgba(231, 76, 60, 0.2);
-      color: #e74c3c;
+
+    .bar {
+      height: 12px;
+      margin-top: 14px;
+      border-radius: 999px;
+      background: var(--track);
+      overflow: hidden;
     }
-    
-    .status.info {
-      background: rgba(52, 152, 219, 0.2);
-      color: #3498db;
+
+    .bar span {
+      display: block;
+      width: 0%;
+      height: 100%;
+      background: var(--primary);
+      transition: width 180ms ease;
+    }
+
+    .status {
+      margin-top: 14px;
+      padding-top: 14px;
+      border-top: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 15px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    label {
+      display: grid;
+      gap: 7px;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    input {
+      width: 100%;
+      height: 42px;
+      padding: 0 11px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      color: var(--ink);
+      font: inherit;
+      font-size: 15px;
+    }
+
+    input:focus {
+      outline: 2px solid rgba(23, 111, 93, 0.2);
+      border-color: var(--primary);
+    }
+
+    .actions {
+      display: grid;
+      grid-template-columns: 1.2fr 1fr 1fr;
+      gap: 10px;
+    }
+
+    button {
+      min-height: 44px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--surface);
+      color: var(--ink);
+      font: inherit;
+      font-size: 14px;
+      font-weight: 760;
+      cursor: pointer;
+    }
+
+    button:hover {
+      border-color: var(--primary);
+    }
+
+    button.primary {
+      border-color: var(--primary);
+      background: var(--primary);
+      color: #fff;
+    }
+
+    button.primary:hover {
+      background: var(--primary-hover);
+    }
+
+    button.danger {
+      color: var(--danger);
+    }
+
+    button:disabled {
+      cursor: not-allowed;
+      opacity: 0.55;
+    }
+
+    .note {
+      margin-top: 12px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    @media (max-width: 620px) {
+      main {
+        padding: 18px;
+      }
+
+      header,
+      .progress-head,
+      .row {
+        display: grid;
+      }
+
+      .grid,
+      .actions {
+        grid-template-columns: 1fr;
+      }
+
+      .phase {
+        width: fit-content;
+      }
     }
   </style>
 </head>
 <body>
-  <div class="container">
-    <h1>⏰ 久坐提醒</h1>
-    
-    <div class="form-group">
-      <label for="mins">提醒间隔（分钟）：</label>
-      <input id="mins" type="number" min="1" max="180" value="45" placeholder="输入分钟数">
-    </div>
-    <div class="form-group" id="mode-group" style="display: none;">
-      <label for="mode">监测模式：</label>
-      <select id="mode">
-        <option value="system-active">系统活跃</option>
-        <option value="typing">持续打字</option>
-      </select>
-    </div>
-    <div class="form-group">
-      <label><input id="repeat" type="checkbox" checked> 循环提醒（每 5 分钟自动继续）</label>
-    </div>
-    
-    <button id="start">开始计时</button>
-    <button id="ask" style="display: none;">允许通知</button>
-    
-    <div id="left">设置提醒间隔，点击开始计时</div>
-    <div id="status"></div>
-    
-    <!-- PWA安装提示 -->
-    <div id="install-prompt" style="display: none; margin-top: 20px; padding: 15px; background: #f0f0f0; border: 2px solid #000; border-radius: 10px; text-align: center; font-size: 14px;">
-      <p style="color: #000;">📱 <strong>iPhone用户：</strong>点击Safari底部分享按钮 → "添加到主屏幕" → 从主屏幕图标打开应用，即可获得通知权限</p>
-      <button id="install-btn" style="margin-top: 10px; padding: 8px 16px; background: #000; border: 2px solid #000; border-radius: 6px; color: #fff; cursor: pointer;">我知道了</button>
-    </div>
-  </div>
+  <main>
+    <header>
+      <div>
+        <h1>久坐提醒</h1>
+        <p>按固定间隔提醒起身，只有离开电脑完成休息，才累计到今日目标。</p>
+      </div>
+      <div class="phase" id="phase">未开始</div>
+    </header>
+
+    <section>
+      <div class="progress-head">
+        <div>
+          <div class="progress-title">今日有效休息</div>
+          <div class="progress-value" id="daily-value">0 / 30 分钟</div>
+        </div>
+        <div class="progress-title" id="today-key">今天</div>
+      </div>
+      <div class="bar" aria-hidden="true"><span id="daily-bar"></span></div>
+      <div class="status" id="status">设置目标后开始。</div>
+    </section>
+
+    <section>
+      <div class="grid">
+        <label>
+          多久提醒一次（分钟）
+          <input id="interval" type="number" min="1" max="240" step="1">
+        </label>
+        <label>
+          每次有效休息（分钟）
+          <input id="rest-block" type="number" min="1" max="60" step="1">
+        </label>
+        <label>
+          每日休息目标（分钟）
+          <input id="daily-goal" type="number" min="1" max="480" step="1">
+        </label>
+        <label>
+          稍后提醒（分钟）
+          <input id="snooze" type="number" min="1" max="60" step="1">
+        </label>
+        <label>
+          离开电脑判定（秒）
+          <input id="idle-confirm" type="number" min="5" max="120" step="1">
+        </label>
+      </div>
+      <p class="note">休息期间一旦动键盘或鼠标，本次有效休息计时会重置。</p>
+    </section>
+
+    <section>
+      <div class="actions">
+        <button class="primary" id="primary">开始提醒</button>
+        <button id="save">保存设置</button>
+        <button class="danger" id="stop">停止</button>
+      </div>
+      <div class="actions" style="margin-top: 10px;">
+        <button id="reset-today">重置今日目标</button>
+        <button id="show-rest">测试休息弹窗</button>
+        <button id="skip" disabled>跳过本次</button>
+      </div>
+    </section>
+  </main>
 
   <script>
-    // 检测是否在 Electron 环境中
-    const isElectron = typeof window !== 'undefined' && window.electronAPI;
-    
-    // 注册根级 Service Worker，便于 iOS 安装为PWA（仅在非 Electron 环境）
-    if (!isElectron && 'serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/sw.js').catch(()=>{});
-    }
-    
-    const $ = sel => document.querySelector(sel);
-    const btn = $('#start');
-    const mins = $('#mins');
-    const mode = $('#mode');
-    const modeGroup = $('#mode-group');
-    const left = $('#left');
-    const status = $('#status');
-    const repeat = $('#repeat');
-    const ask = $('#ask');
-    const installPrompt = $('#install-prompt');
-    const installBtn = $('#install-btn');
-    
-    let timer = null;
-    let until = 0;
-    let ticker = null;
-    let intervalMinutes = 0;
-    let audioCtx = null;
-    let latestElectronState = null;
+    const api = window.electronAPI;
+    const els = {
+      phase: document.querySelector('#phase'),
+      dailyValue: document.querySelector('#daily-value'),
+      dailyBar: document.querySelector('#daily-bar'),
+      todayKey: document.querySelector('#today-key'),
+      status: document.querySelector('#status'),
+      interval: document.querySelector('#interval'),
+      restBlock: document.querySelector('#rest-block'),
+      dailyGoal: document.querySelector('#daily-goal'),
+      snooze: document.querySelector('#snooze'),
+      idleConfirm: document.querySelector('#idle-confirm'),
+      primary: document.querySelector('#primary'),
+      save: document.querySelector('#save'),
+      stop: document.querySelector('#stop'),
+      resetToday: document.querySelector('#reset-today'),
+      showRest: document.querySelector('#show-rest'),
+      skip: document.querySelector('#skip')
+    };
 
-    const STORAGE_KEY = 'sit_reminder_state_v1';
-    const REPEAT_INTERVAL_MINUTES = 5; // 循环固定 5 分钟
+    let latestState = null;
 
-    function showStatus(message, type = 'info') {
-      status.textContent = message;
-      status.className = `status ${type}`;
-      setTimeout(() => {
-        status.textContent = '';
-        status.className = 'status';
-      }, 3000);
+    function minutes(ms) {
+      return Math.max(0, Math.round((Number(ms) || 0) / 60000));
     }
 
-    async function ensurePermission() {
-      if (!("Notification" in window)) {
-        showStatus("此浏览器不支持系统通知，将仅使用页面/声音提醒", 'info');
-        return false;
+    function clock(ms) {
+      const total = Math.max(0, Math.round((Number(ms) || 0) / 1000));
+      const m = Math.floor(total / 60);
+      const s = String(total % 60).padStart(2, '0');
+      return `${m}:${s}`;
+    }
+
+    function setInputValue(input, value) {
+      if (document.activeElement !== input) {
+        input.value = value;
       }
-      
-      const p = Notification.permission === 'default' 
-        ? await Notification.requestPermission() 
-        : Notification.permission;
-        
-      if (p !== 'granted') {
-        showStatus('未授予通知权限，将仅使用页面/声音提醒', 'info');
-        return false;
-      }
-      
-      return true;
     }
 
-    function showNow(title, body) {
-      try {
-        new Notification(title, {
-          body,
-          icon: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">⏰</text></svg>',
-          badge: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">⏰</text></svg>',
-          requireInteraction: true, // 保持通知常驻，避免错过
-          tag: 'sit-reminder',      // 同一标签避免堆积
-          renotify: false           // 替换而非反复叮咚
-        });
-      } catch (e) {
-        alert(`${title}\n${body}`);
-      }
-      
-      // 震动提醒（如果支持）
-      if (navigator.vibrate) {
-        navigator.vibrate([300, 120, 300, 120, 600]);
-      }
-
-      // 蜂鸣音（若已预热音频上下文）
-      try { playBeepSequence(); } catch {}
+    function phaseLabel(phase) {
+      return {
+        idle: '未开始',
+        work: '计时中',
+        prompt: '待休息',
+        resting: '休息中',
+        paused: '已暂停',
+        completed: '今日完成'
+      }[phase] || phase;
     }
 
-    function fmt(ms) {
-      const s = Math.max(0, Math.round(ms / 1000));
-      const m = Math.floor(s / 60);
-      const ss = String(s % 60).padStart(2, '0');
-      return `${m}:${ss}`;
-    }
-
-    function minutesFromMs(ms) {
-      return Math.max(1, Math.round((Number(ms) || 0) / 60000));
-    }
-
-    function renderElectronState(state) {
-      if (!state) return;
-
-      latestElectronState = state;
-      mins.value = minutesFromMs(state.settings.thresholdMs);
-      mode.value = state.mode || 'system-active';
-
-      const accumulated = minutesFromMs(state.accumulatedMs);
-      const remaining = fmt(state.remainingMs);
-      const snoozeRemaining = fmt(state.snoozeUntil - Date.now());
-      const cooldownRemaining = fmt(state.cooldownUntil - Date.now());
-      const isTypingMode = state.mode === 'typing';
-      const typingGapRemaining = fmt((state.typing?.lastTypingAt || 0) + (state.settings.typingGapMs || 0) - Date.now());
-
+    function statusText(state) {
       if (state.phase === 'idle') {
-        left.textContent = isTypingMode ? '等待键盘活动，检测到打字后开始会话' : '设置提醒间隔，点击开始累计';
-        left.style.background = '#f0f0f0';
-        btn.textContent = isTypingMode ? '开始监测' : '开始累计';
-        btn.disabled = false;
-        return;
+        return '设置提醒间隔和每日目标后开始。';
       }
-
       if (state.phase === 'paused') {
-        left.textContent = `已暂停，已累计约 ${accumulated} 分钟`;
-        left.style.background = 'rgba(255, 255, 255, 0.1)';
-        btn.textContent = '继续累计';
-        btn.disabled = false;
-        return;
+        return `已暂停。今日还差 ${minutes(state.dailyRemainingMs)} 分钟有效休息。`;
       }
-
-      if (state.phase === 'cooldown') {
-        left.textContent = `休息中，剩余 ${cooldownRemaining}`;
-        left.style.background = 'rgba(46, 204, 113, 0.3)';
-        btn.textContent = '暂停累计';
-        btn.disabled = false;
-        return;
+      if (state.phase === 'work') {
+        return `距离下次提醒 ${clock(state.remainingMs)}。本轮已工作 ${minutes(state.workElapsedMs)} 分钟。`;
       }
-
-      if (state.phase === 'notifying') {
-        left.textContent = `已提醒，累计约 ${accumulated} 分钟`;
-        left.style.background = 'rgba(241, 196, 15, 0.3)';
-        btn.textContent = '暂停累计';
-        btn.disabled = false;
-        return;
+      if (state.phase === 'prompt') {
+        return `休息提醒已弹出。本次需要完成 ${minutes(state.settings.restBlockMs)} 分钟有效休息。`;
       }
-
-      if (state.phase === 'break-window') {
-        left.textContent = `休息窗口已打开，累计约 ${accumulated} 分钟`;
-        left.style.background = 'rgba(231, 76, 60, 0.2)';
-        btn.textContent = '暂停累计';
-        btn.disabled = false;
-        return;
+      if (state.phase === 'resting') {
+        if (!state.idleEnough) {
+          return `检测到你仍在使用电脑。离开电脑 ${state.settings.idleConfirmSec} 秒后，本次休息重新开始累计。`;
+        }
+        return `有效休息中，本次还差 ${clock(state.restRemainingMs)}。`;
       }
-
-      if (state.snoozeUntil > Date.now()) {
-        left.textContent = `已稍后提醒，剩余 ${snoozeRemaining}`;
-        left.style.background = 'rgba(52, 152, 219, 0.2)';
-      } else if (isTypingMode && (!state.typing?.sessionStartAt || !state.typing?.lastTypingAt)) {
-        left.textContent = '持续打字模式已开启，等待键盘活动';
-        left.style.background = 'rgba(52, 152, 219, 0.2)';
-      } else if (isTypingMode) {
-        left.textContent = `打字会话约 ${accumulated} 分钟，超 ${typingGapRemaining} 无输入将重置`;
-        left.style.background = 'rgba(52, 152, 219, 0.3)';
-      } else {
-        left.textContent = `已累计约 ${accumulated} 分钟，距离提醒 ${remaining}`;
-        left.style.background = 'rgba(52, 152, 219, 0.3)';
+      if (state.phase === 'completed') {
+        return '今日有效休息目标已完成。';
       }
-
-      btn.textContent = '暂停累计';
-      btn.disabled = false;
+      return '';
     }
 
-    function tick() {
-      const ms = until - Date.now();
-      if (ms <= 0) {
-        left.innerHTML = '🎉 到点啦！<br>起来活动一下～';
-        left.style.background = 'rgba(46, 204, 113, 0.3)';
-        
-        // Electron 环境下，通知由主进程发送，这里只更新 UI
-        if (!isElectron || !window.electronAPI) {
-          showNow('该休息啦', '站起来走动下，喝口水 👟');
-        }
-        showStatus('提醒已发送！', 'success');
+    function render(state) {
+      latestState = state;
+      const settings = state.settings;
 
-        // 循环或结束
-        if (repeat.checked) {
-          until = Date.now() + REPEAT_INTERVAL_MINUTES * 60 * 1000;
-          persistState(true);
-          // 确保 ticker 存在
-          if (!ticker) ticker = setInterval(tick, 500);
-          if (timer) clearTimeout(timer);
-          timer = setTimeout(() => tick(), REPEAT_INTERVAL_MINUTES * 60 * 1000 + 120);
-          // 恢复进行中的样式
-          left.style.background = 'rgba(52, 152, 219, 0.3)';
-        } else {
-          clearInterval(ticker);
-          ticker = null;
-          timer = null;
-          btn.textContent = '重新开始';
-          btn.disabled = false;
-          persistState(false);
-          
-          // Electron 环境下停止主进程的提醒
-          if (isElectron && window.electronAPI) {
-            window.electronAPI.stopReminder();
-          }
-        }
-      } else {
-        left.textContent = '剩余时间：' + fmt(ms);
-      }
+      els.phase.textContent = phaseLabel(state.phase);
+      els.dailyValue.textContent = `${minutes(state.todayRestMs)} / ${minutes(settings.dailyGoalMs)} 分钟`;
+      els.dailyBar.style.width = `${Math.round((state.dailyProgress || 0) * 100)}%`;
+      els.todayKey.textContent = state.todayKey;
+      els.status.textContent = statusText(state);
+
+      setInputValue(els.interval, minutes(settings.intervalMs));
+      setInputValue(els.restBlock, minutes(settings.restBlockMs));
+      setInputValue(els.dailyGoal, minutes(settings.dailyGoalMs));
+      setInputValue(els.snooze, minutes(settings.snoozeMs));
+      setInputValue(els.idleConfirm, settings.idleConfirmSec);
+
+      const running = state.phase === 'work' || state.phase === 'prompt' || state.phase === 'resting';
+      els.primary.textContent = running ? '暂停提醒' : '开始提醒';
+      els.stop.disabled = state.phase === 'idle';
+      els.skip.disabled = !(state.phase === 'prompt' || state.phase === 'resting');
+      els.showRest.disabled = state.phase === 'completed';
     }
 
-    function stopTimer() {
-      if (ticker) {
-        clearInterval(ticker);
-        ticker = null;
-      }
-      if (timer) {
-        clearTimeout(timer);
-        timer = null;
-      }
-      persistState(false);
+    function readSettings() {
+      return {
+        intervalMinutes: Number(els.interval.value || 45),
+        restBlockMinutes: Number(els.restBlock.value || 5),
+        dailyGoalMinutes: Number(els.dailyGoal.value || 30),
+        snoozeMinutes: Number(els.snooze.value || 5),
+        idleConfirmSec: Number(els.idleConfirm.value || 15)
+      };
     }
 
-    function persistState(running) {
-      try {
-        if (!running) {
-          localStorage.removeItem(STORAGE_KEY);
-          return;
-        }
-        const payload = {
-          until,
-          intervalMinutes,
-          repeatIntervalMinutes: REPEAT_INTERVAL_MINUTES,
-          repeat: !!repeat.checked,
-          running: true
-        };
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
-      } catch {}
+    async function saveSettings() {
+      render(await api.updateReminderSettings(readSettings()));
     }
 
-    function restoreState() {
-      try {
-        const raw = localStorage.getItem(STORAGE_KEY);
-        if (!raw) return false;
-        const s = JSON.parse(raw);
-        if (!s || !s.running) return false;
-        intervalMinutes = Number(s.intervalMinutes||0);
-        if (typeof s.repeat === 'boolean') repeat.checked = s.repeat;
-        until = Number(s.until||0);
-        const remain = until - Date.now();
-        if (remain <= 0) { localStorage.removeItem(STORAGE_KEY); return false; }
-
-        left.textContent = '剩余时间：' + fmt(remain);
-        left.style.background = 'rgba(52, 152, 219, 0.3)';
-        btn.textContent = '停止计时';
-        btn.disabled = false;
-        ticker = setInterval(tick, 500);
-        timer = setTimeout(() => tick(), remain + 120);
-        return true;
-      } catch { return false; }
-    }
-
-    function ensureAudio() {
-      try {
-        if (!audioCtx) {
-          const Ctx = window.AudioContext || window.webkitAudioContext;
-          if (Ctx) {
-            audioCtx = new Ctx();
-          }
-        }
-      } catch {}
-    }
-
-    function playBeepAt(freq, startAt, duration, volume=0.25) {
-      const osc = audioCtx.createOscillator();
-      const g = audioCtx.createGain();
-      osc.type = 'sine';
-      osc.frequency.value = freq;
-      osc.connect(g).connect(audioCtx.destination);
-      const t = startAt;
-      g.gain.setValueAtTime(0.0001, t);
-      g.gain.exponentialRampToValueAtTime(volume, t + 0.02);
-      g.gain.exponentialRampToValueAtTime(0.0001, t + duration);
-      osc.start(t);
-      osc.stop(t + duration + 0.02);
-    }
-
-    function playBeepSequence() {
-      if (!audioCtx) return;
-      const base = audioCtx.currentTime + 0.01;
-      let t = base;
-      const short = 0.12;
-      const gapS = 0.08;
-      const gapM = 0.16;
-      // 三短 + 两短 + 一长（不同音高）
-      playBeepAt(880, t, short); t += short + gapS;
-      playBeepAt(880, t, short); t += short + gapS;
-      playBeepAt(880, t, short); t += short + gapM;
-      playBeepAt(660, t, short); t += short + gapS;
-      playBeepAt(660, t, short); t += short + gapM;
-      playBeepAt(990, t, 0.28, 0.28);
-    }
-
-    btn.onclick = async () => {
-      // Electron 环境：使用主进程统一状态机
-      if (isElectron && window.electronAPI) {
-        const phase = latestElectronState?.phase || 'idle';
-        if (phase !== 'idle' && phase !== 'paused') {
-          await window.electronAPI.pauseTracking();
-          showStatus('已暂停累计', 'info');
-          return;
-        }
-
-        const m = Math.max(1, Number(mins.value || 0));
-        if (m > 180) {
-          showStatus('提醒间隔不能超过180分钟', 'error');
-          return;
-        }
-
-        await window.electronAPI.updateReminderSettings({ thresholdMinutes: m });
-        await window.electronAPI.startTracking();
-        showStatus(`已开始累计，阈值 ${m} 分钟`, 'success');
-        return;
-      }
-
-      // 浏览器环境：原有逻辑
-      if (timer) {
-        // 停止当前计时
-        stopTimer();
-        left.textContent = '计时已停止';
-        left.style.background = 'rgba(255, 255, 255, 0.1)';
-        btn.textContent = '开始计时';
-        showStatus('计时已停止', 'info');
-        return;
-      }
-
-      // 浏览器环境：尽量不因通知权限问题阻塞计时
-      try {
-        await ensurePermission();
-      } catch (e) {
-        // 权限请求异常时忽略，仅使用页面/声音提醒
-      }
-
-      ensureAudio();
-      const m = Math.max(1, Number(mins.value || 0));
-      if (m > 180) {
-        showStatus('提醒间隔不能超过180分钟', 'error');
-        return;
-      }
-
-      intervalMinutes = m;
-      until = Date.now() + m * 60 * 1000;
-      left.textContent = '剩余时间：' + fmt(until - Date.now());
-      left.style.background = 'rgba(52, 152, 219, 0.3)';
-      
-      btn.textContent = '停止计时';
-      btn.disabled = false;
-      
-      if (ticker) clearInterval(ticker);
-      ticker = setInterval(tick, 500);
-      
-      if (timer) clearTimeout(timer);
-      timer = setTimeout(() => tick(), m * 60 * 1000 + 120);
-      persistState(true);
-      
-      // 仅在到点时发送系统通知；开始时不弹通知，避免打扰
-      showStatus(`已设置 ${m} 分钟后提醒`, 'success');
-    };
-
-    // 页面加载时检查通知权限和恢复状态
-    window.addEventListener('load', async () => {
-      // Electron 环境：从主进程加载设置
-      if (isElectron && window.electronAPI) {
-        try {
-          const repeatGroup = repeat.closest('.form-group');
-          if (repeatGroup) repeatGroup.style.display = 'none';
-          modeGroup.style.display = 'block';
-          mode.addEventListener('change', async () => {
-            if (mode.value === 'typing') {
-              const result = await window.electronAPI.requestTypingModeEnable();
-              renderElectronState(result.state);
-              if (result.hookResult && !result.hookResult.ok) {
-                showStatus(`打字模式未就绪：${result.hookResult.error || result.hookResult.status}`, 'error');
-              } else {
-                showStatus('持续打字模式已开启', 'success');
-              }
-              return;
-            }
-
-            renderElectronState(await window.electronAPI.updateReminderSettings({ mode: 'system-active' }));
-            showStatus('已切换为系统活跃模式', 'info');
-          });
-          window.electronAPI.subscribeReminderState(renderElectronState);
-          renderElectronState(await window.electronAPI.getReminderState());
-          setInterval(async () => {
-            try {
-              renderElectronState(await window.electronAPI.getReminderState());
-            } catch {}
-          }, 1000);
-          showStatus('Electron 桌面应用已就绪', 'success');
-        } catch (e) {
-          console.error('Failed to load Electron settings:', e);
-        }
-        return;
-      }
-      
-      // 浏览器环境：原有逻辑
-      const restored = restoreState();
-      if (!restored) {
-        if (Notification.permission === 'granted') {
-          showStatus('通知权限已授予，可以开始使用', 'success');
-        } else if (Notification.permission === 'denied') {
-          showStatus('通知权限被拒绝，请手动允许', 'error');
-        }
-      }
+    els.primary.addEventListener('click', async () => {
+      await saveSettings();
+      const state = latestState;
+      const running = state.phase === 'work' || state.phase === 'prompt' || state.phase === 'resting';
+      render(await (running ? api.pauseTracking() : api.startTracking()));
     });
 
-    // 单独的“允许通知”按钮，方便用户手动触发
-    ask.onclick = async () => {
-      if (!("Notification" in window)) {
-        showStatus('此浏览器不支持通知', 'error');
-        return;
-      }
-      try {
-        const p = Notification.permission === 'default' 
-          ? await Notification.requestPermission() 
-          : Notification.permission;
-        if (p === 'granted') {
-          showStatus('已允许通知', 'success');
-          // 不额外弹通知，避免无关打扰
-        } else if (p === 'denied') {
-          showStatus('通知被系统阻止，请在浏览器设置里允许', 'error');
-        } else {
-          showStatus('通知权限未变更', 'info');
-        }
-      } catch (e) {
-        showStatus('请求通知权限失败', 'error');
-      }
-    };
-
-    // 安装提示逻辑
-    installBtn.onclick = () => {
-      installPrompt.style.display = 'none';
-      localStorage.setItem('install_prompt_dismissed', 'true');
-    };
-
-    // 页面失焦时保持计时器运行
-    // 不在切换到后台时发送系统通知，避免干扰
-
-    // 页面加载时检查是否需要显示安装提示（仅在浏览器环境）
-    window.addEventListener('load', () => {
-      if (isElectron) {
-        // Electron 环境：隐藏安装提示和"允许通知"按钮
-        installPrompt.style.display = 'none';
-        ask.style.display = 'none';
-        return;
-      }
-      
-      const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
-      const isStandalone = window.matchMedia('(display-mode: standalone)').matches;
-      const promptDismissed = localStorage.getItem('install_prompt_dismissed');
-      
-      if (isIOS && !isStandalone && !promptDismissed) {
-        installPrompt.style.display = 'block';
-      }
+    els.save.addEventListener('click', saveSettings);
+    els.stop.addEventListener('click', async () => render(await api.stopTracking()));
+    els.resetToday.addEventListener('click', async () => render(await api.resetToday()));
+    els.showRest.addEventListener('click', async () => {
+      await saveSettings();
+      render(await api.skipOnce());
+      render(await api.startTracking());
+      render(await api.updateReminderSettings({ intervalMs: 1000 }));
     });
+    els.skip.addEventListener('click', async () => render(await api.skipOnce()));
+
+    if (api) {
+      api.subscribeReminderState(render);
+      api.getReminderState().then(render).catch(() => {});
+    }
   </script>
 </body>
 </html>

@@ -4,23 +4,22 @@ const { Notification } = require('electron');
 function createNotificationService(dispatch) {
   function showBreakNotification(state) {
     if (!Notification.isSupported()) {
-      dispatch({ type: 'OPEN_BREAK_WINDOW' });
+      dispatch({ type: 'PROMPT_BREAK' });
       return false;
     }
 
     const notification = new Notification({
       title: '该休息一下了',
-      body: `已活跃 ${formatMinutes(state.accumulatedMs)} 分钟，站起来动一动。`,
+      body: `已工作 ${formatMinutes(state.workElapsedMs || state.accumulatedMs)} 分钟，站起来完成本次休息目标。`,
       icon: path.join(__dirname, '..', 'favicon.png'),
       silent: false
     });
 
     notification.on('click', () => {
-      dispatch({ type: 'NOTIFICATION_CLICKED' });
+      dispatch({ type: 'PROMPT_BREAK' });
     });
 
     notification.show();
-    dispatch({ type: 'NOTIFICATION_SENT' });
     return true;
   }
 
