@@ -6,70 +6,70 @@ function createRestWindowService(dispatch) {
   let isDestroying = false;
   let latestState = null;
 
-  function show(parentWindow, state) {
+  function show(_parentWindow, state) {
     latestState = state;
 
     try {
       if (!restWindow || restWindow.isDestroyed()) {
         const bounds = getRestWindowBounds();
-      restWindow = new BrowserWindow({
-        width: bounds.width,
-        height: bounds.height,
-        x: bounds.x,
-        y: bounds.y,
-        resizable: false,
-        fullscreenable: false,
-        minimizable: false,
-        maximizable: false,
-        focusable: true,
-        alwaysOnTop: true,
-        skipTaskbar: true,
-        show: false,
-        webPreferences: {
-          nodeIntegration: false,
-          contextIsolation: true,
-          preload: path.join(__dirname, '..', 'preload.js')
-        },
-        title: '该休息一下了',
-        icon: path.join(__dirname, '..', 'favicon.png')
-      });
+        restWindow = new BrowserWindow({
+          width: bounds.width,
+          height: bounds.height,
+          x: bounds.x,
+          y: bounds.y,
+          resizable: false,
+          fullscreenable: false,
+          minimizable: false,
+          maximizable: false,
+          focusable: true,
+          alwaysOnTop: true,
+          skipTaskbar: true,
+          show: false,
+          webPreferences: {
+            nodeIntegration: false,
+            contextIsolation: true,
+            preload: path.join(__dirname, '..', 'preload.js')
+          },
+          title: '该休息一下了',
+          icon: path.join(__dirname, '..', 'favicon.png')
+        });
 
-      restWindow.on('closed', () => {
-        restWindow = null;
-      });
+        restWindow.on('closed', () => {
+          restWindow = null;
+        });
 
-      restWindow.on('close', () => {
-        if (!isDestroying) {
-          dispatch({ type: 'SNOOZE' });
-        }
-      });
+        restWindow.on('close', () => {
+          if (!isDestroying) {
+            dispatch({ type: 'SNOOZE' });
+          }
+        });
 
-      restWindow.webContents.on('did-finish-load', () => {
-        sendState(latestState);
-        showNow();
-      });
+        restWindow.webContents.on('did-finish-load', () => {
+          sendState(latestState);
+          showNow();
+        });
 
-      restWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
-        console.error('Rest window failed to load:', errorCode, errorDescription);
-      });
+        restWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
+          console.error('Rest window failed to load:', errorCode, errorDescription);
+        });
 
-      restWindow.once('ready-to-show', () => {
-        sendState(latestState);
-        showNow();
-      });
+        restWindow.once('ready-to-show', () => {
+          sendState(latestState);
+          showNow();
+        });
 
-      restWindow.loadFile(path.join(__dirname, '..', 'rest.html')).catch((error) => {
-        console.error('Rest window load failed:', error);
-      });
-    }
+        restWindow.loadFile(path.join(__dirname, '..', 'rest.html')).catch((error) => {
+          console.error('Rest window load failed:', error);
+        });
+      }
 
-    if (restWindow.webContents.isLoading()) {
+      if (restWindow.webContents.isLoading()) {
+        return true;
+      }
+
+      sendState(state);
+      showNow();
       return true;
-    }
-
-    sendState(state);
-    showNow();
-    return true;
     } catch (error) {
       console.error('Rest window show failed:', error);
       return false;
