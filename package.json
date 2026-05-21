@@ -1,40 +1,32 @@
 {
   "name": "sit-reminder",
   "version": "1.0.0",
-  "description": "智能久坐提醒应用，支持后台推送通知",
+  "description": "电脑级久坐提醒应用，按固定间隔跳到前台并累计每日有效休息目标",
   "main": "main.js",
   "scripts": {
     "postinstall": "electron-builder install-app-deps",
-    "dev": "npx serve . -p 3000",
     "electron": "electron .",
     "electron:dev": "NODE_ENV=development electron .",
+    "test": "node tests/reminderState.test.js",
     "build": "electron-builder",
     "build:mac": "electron-builder --mac",
-    "build:win": "electron-builder --win",
-    "deploy": "echo 'Deploy to your preferred static hosting service'",
-    "setup-supabase": "echo 'Run supabase-setup.sql in your Supabase project'",
-    "generate-vapid": "npx web-push generate-vapid-keys"
+    "build:win": "electron-builder --win"
   },
   "keywords": [
-    "pwa",
     "reminder",
-    "notification",
+    "desktop",
+    "electron",
     "health",
-    "productivity",
-    "supabase"
+    "productivity"
   ],
-  "author": "Your Name",
+  "author": "",
   "license": "MIT",
   "devDependencies": {
-    "serve": "^14.2.1",
-    "web-push": "^3.6.6",
     "electron": "^28.0.0",
     "electron-builder": "^24.9.1"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.38.0",
-    "electron-store": "^8.1.0",
-    "uiohook-napi": "^1.5.5"
+    "electron-store": "^8.1.0"
   },
   "build": {
     "appId": "com.sitreminder.app",
@@ -49,8 +41,7 @@
       "index.html",
       "rest.html",
       "favicon.png",
-      "icon.svg",
-      "manifest.json"
+      "icon.svg"
     ],
     "mac": {
       "category": "public.app-category.healthcare-fitness",
@@ -81,5 +72,4 @@
   },
   "homepage": "https://github.com/yourusername/sit-reminder#readme"
 }
-
 
