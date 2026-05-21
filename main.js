@@ -2,7 +2,6 @@ const { app, BrowserWindow, Tray, Menu, ipcMain, nativeImage, powerMonitor } = r
 const path = require('path');
 const Store = require('electron-store');
 const { createInitialState, normalizeSettings, reduce, deriveState, MS_PER_MINUTE } = require('./main/reminderState');
-const { createNotificationService } = require('./main/notificationService');
 const { createRestWindowService } = require('./main/restWindow');
 
 const store = new Store();
@@ -12,7 +11,6 @@ const RUNTIME_KEY = 'standingGoalRuntimeV1';
 let mainWindow = null;
 let tray = null;
 let state = createInitialState(loadSettings());
-let notificationService = null;
 let restWindowService = null;
 let tickTimer = null;
 
@@ -125,7 +123,6 @@ function showWindow() {
 }
 
 function startRuntime() {
-  notificationService = createNotificationService(dispatch);
   restWindowService = createRestWindowService(dispatch);
   hydrateRuntimeState();
 
@@ -167,7 +164,7 @@ function runEffects(previousState, nextState) {
   if (isRestVisible) {
     const didShow = restWindowService.show(mainWindow, nextState);
     if (didShow === false && nextState.phase === 'prompt') {
-      notificationService.showBreakNotification(nextState);
+      showWindow();
     }
     return;
   }
@@ -310,17 +307,6 @@ function registerIpc() {
     return getPublicState();
   });
 
-  ipcMain.handle('request-typing-mode-enable', () => {
-    return {
-      state: getPublicState(),
-      hookResult: {
-        ok: false,
-        status: 'removed',
-        error: '新版久坐提醒不再使用持续打字检测'
-      }
-    };
-  });
-
   ipcMain.handle('start-tracking', () => {
     dispatch({ type: 'START' });
     return getPublicState();
@@ -354,6 +340,11 @@ function registerIpc() {
 
   ipcMain.handle('reset-today', () => {
     dispatch({ type: 'RESET_TODAY' });
+    return getPublicState();
+  });
+
+  ipcMain.handle('show-rest-window', () => {
+    dispatch({ type: 'PROMPT_BREAK' });
     return getPublicState();
   });
 

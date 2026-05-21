@@ -409,9 +409,7 @@
       els.resetToday.addEventListener('click', async () => render(await api.resetToday()));
       els.showRest.addEventListener('click', async () => {
         await saveSettings();
-        render(await api.skipOnce());
-        render(await api.startTracking());
-        render(await api.updateReminderSettings({ intervalMs: 1000 }));
+        render(await api.showRestWindow());
       });
       els.skip.addEventListener('click', async () => render(await api.skipOnce()));
 

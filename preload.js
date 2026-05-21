@@ -11,6 +11,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   snooze: (minutes) => ipcRenderer.invoke('snooze', minutes),
   skipOnce: () => ipcRenderer.invoke('skip-once'),
   resetToday: () => ipcRenderer.invoke('reset-today'),
+  showRestWindow: () => ipcRenderer.invoke('show-rest-window'),
 
   subscribeReminderState: (callback) => {
     const listener = (event, state) => callback(state);
@@ -23,7 +24,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   updateSettings: (settings) => ipcRenderer.send('update-settings', settings),
   showWindow: () => ipcRenderer.send('show-window'),
 
-  requestTypingModeEnable: () => ipcRenderer.invoke('request-typing-mode-enable'),
   removeAllListeners: (channel) => {
     ipcRenderer.removeAllListeners(channel);
   }
