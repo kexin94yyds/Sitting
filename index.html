@@ -396,27 +396,35 @@
       render(await api.updateReminderSettings(readSettings()));
     }
 
-    els.primary.addEventListener('click', async () => {
-      await saveSettings();
-      const state = latestState;
-      const running = state.phase === 'work' || state.phase === 'prompt' || state.phase === 'resting';
-      render(await (running ? api.pauseTracking() : api.startTracking()));
-    });
-
-    els.save.addEventListener('click', saveSettings);
-    els.stop.addEventListener('click', async () => render(await api.stopTracking()));
-    els.resetToday.addEventListener('click', async () => render(await api.resetToday()));
-    els.showRest.addEventListener('click', async () => {
-      await saveSettings();
-      render(await api.skipOnce());
-      render(await api.startTracking());
-      render(await api.updateReminderSettings({ intervalMs: 1000 }));
-    });
-    els.skip.addEventListener('click', async () => render(await api.skipOnce()));
-
     if (api) {
+      els.primary.addEventListener('click', async () => {
+        await saveSettings();
+        const state = latestState;
+        const running = state.phase === 'work' || state.phase === 'prompt' || state.phase === 'resting';
+        render(await (running ? api.pauseTracking() : api.startTracking()));
+      });
+
+      els.save.addEventListener('click', saveSettings);
+      els.stop.addEventListener('click', async () => render(await api.stopTracking()));
+      els.resetToday.addEventListener('click', async () => render(await api.resetToday()));
+      els.showRest.addEventListener('click', async () => {
+        await saveSettings();
+        render(await api.skipOnce());
+        render(await api.startTracking());
+        render(await api.updateReminderSettings({ intervalMs: 1000 }));
+      });
+      els.skip.addEventListener('click', async () => render(await api.skipOnce()));
+
       api.subscribeReminderState(render);
       api.getReminderState().then(render).catch(() => {});
+    } else {
+      els.status.textContent = '当前页面需要在 Electron 应用中打开，浏览器环境不能控制后台提醒。';
+      els.primary.disabled = true;
+      els.save.disabled = true;
+      els.stop.disabled = true;
+      els.resetToday.disabled = true;
+      els.showRest.disabled = true;
+      els.skip.disabled = true;
     }
   </script>
 </body>
