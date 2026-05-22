@@ -1,0 +1,45 @@
+{
+  "goal": "久坐通知 Electron 桌面版完全重构",
+  "items": [
+    {
+      "id": "sit-refactor-1",
+      "status": "done",
+      "subject": "恢复 hui1 项目上下文并确认重构边界"
+    },
+    {
+      "id": "sit-refactor-2",
+      "status": "done",
+      "subject": "记录缺失状态机测试问题到知识库"
+    },
+    {
+      "id": "sit-refactor-3",
+      "status": "done",
+      "subject": "删除旧 PWA、云同步、输入 hook 与权限模块"
+    },
+    {
+      "id": "sit-refactor-4",
+      "status": "done",
+      "subject": "补状态机回归测试"
+    },
+    {
+      "id": "sit-refactor-5",
+      "status": "done",
+      "subject": "重写桌面版 README 并刷新 package-lock"
+    },
+    {
+      "id": "sit-refactor-6",
+      "status": "done",
+      "subject": "运行测试、语法检查和构建检查"
+    },
+    {
+      "id": "sit-refactor-7",
+      "status": "pending",
+      "subject": "确认是否升级 Electron / electron-builder 以处理 dev audit"
+    },
+    {
+      "id": "sit-refactor-8",
+      "status": "done",
+      "subject": "手工验收主窗口和测试休息弹窗"
+    }
+  ]
+}
